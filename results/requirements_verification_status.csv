@@ -1,0 +1,17 @@
+requirement_id,status_in_executed_poc,evidence,important_limit
+SR-01,Implemented and exercised,Twin and independent-navigation normalized residuals calculated in all trials; held-out detection metrics reported,Reduced-order synthetic state and sensor model
+SR-02,Implemented and exercised,Gradual carry-off scenarios and weak-attack stress tests; detection latency reported,Attack profiles are simulated biases rather than RF-level spoofing
+SR-03,Implemented and exercised,GNSS-independent odometry surrogate included and used by classifier and response logic,"Independent source is synthetic odometry, not a real INS/visual estimator"
+SR-04,Partially implemented,0.55-1.20 s communication-delay scenario; twin-age variable used in assurance gate,No packet-level network stack or clock attack
+SR-05,Not implemented,None,No cryptographic identity/integrity/replay mechanism in reduced-order simulator
+SR-06,Partially implemented,Probabilistic logistic classifier; Brier score and 10-bin ECE evaluated,"No explicit OOD detector, explanation method, or lifecycle provenance service"
+SR-07,Partially implemented,Three-sample persistence and stale-twin assurance gate before response,Only one data-quality condition modeled
+SR-08,Implemented and exercised,"Action set restricted to detection-only, fixed route-retracing RTB, or GNSS isolation plus mission continuation",Not a certified response policy
+SR-09,Partially represented,Bounded response does not require external twin after detection; independent navigation used after GNSS isolation,No actual onboard/ground process separation in PX4/ROS 2
+SR-10,Not implemented,None,Human operator and decision timeout not included in this execution
+SR-11,Implemented and exercised,GNSS isolated after alert and navigation switched to independent odometry surrogate,Alternative localization quality is simplified
+SR-12,Not implemented,None,GNSS quarantine and reintegration not modeled
+SR-13,Partially implemented,Twin-age signal identifies communication-induced staleness and gates response,No replay/authorization checks
+SR-14,Not implemented,None,No signed/version-controlled runtime configuration mechanism
+SR-15,Partially implemented,"Time-stamped CSV evidence, scenario parameters, model parameters, and results are retained",Logs are reproducible but not tamper-evident
+SR-16,Not verified as an operational requirement,Detection latency measured in simulated mission time,No PX4/real-time hardware timing or mission-specific certified time-to-unsafe boundary
