@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Reproducible reduced-order proof-of-concept for the SDAV GNSS-spoofing architecture.
+
+This is NOT PX4/Gazebo and is not flight validation. It is an executable cyber-physical
+surrogate that implements the manuscript's architecture logic:
+  vehicle dynamics -> GNSS + independent odometry -> external digital twin prediction
+  -> normalized residuals -> multi-source classifier -> assurance gate -> bounded response.
+
+The model is intentionally simple and all numerical parameters are declared as simulation
+parameters rather than real UAV specifications.
+"""
+from __future__ import annotations
+
+import json
+import math
+import os
+import platform
+import sys
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+from scipy.spatial.distance import cdist
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    accuracy_score,
+    brier_score_loss,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+import sklearn
+import scipy
+
+ROOT = Path(__file__).resolve().parent
+RESULTS = ROOT / "results"
+FIGURES = ROOT / "figures"
+RESULTS.mkdir(exist_ok=True)
+FIGURES.mkdir(exist_ok=True)
+
+SCENARIOS = ["nominal", "gnss_degradation", "comm_delay", "abrupt_spoof", "gradual_spoof", "spoof_comm"]
+BENIGN = {"nominal", "gnss_degradation", "comm_delay"}
+ATTACK = {"abrupt_spoof", "gradual_spoof", "spoof_comm"}
+
+@dataclass
+class SimConfig:
+    dt: float = 0.05                    # 20 Hz dynamics/controller
+    duration_s: float = 90.0
+    gnss_period_s: float = 0.20         # 5 Hz GNSS
+    desired_speed_mps: float = 6.0
+    max_accel_mps2: float = 2.0
+    waypoint_radius_m: float = 5.0
+    attack_start_s: float = 30.0
+    event_end_s: float = 50.0
+
+    # declared simulation noise parameters (not sensor specifications)
+    process_accel_sigma: float = 0.05
+    gnss_pos_sigma_m: float = 1.20
+    gnss_vel_sigma_mps: float = 0.15
+    ind_pos_sigma_m: float = 0.55
+    ind_vel_sigma_mps: float = 0.10
+    ind_pos_bias_rw_sigma: float = 0.003
+    ind_vel_bias_rw_sigma: float = 0.0007
+
+    # state-estimator reliance on GNSS before isolation
+    gnss_nav_weight: float = 0.75
+
+    # twin correction using GNSS-independent odometry
+    twin_pos_gain: float = 0.08
+    twin_vel_gain: float = 0.15
+
+    # experimental completion/safety metrics
+    completion_radius_m: float = 7.0
+    recovery_route_threshold_m: float = 3.0
+    recovery_hold_s: float = 1.0
+
+    # mission waypoints [m]
+    waypoints: Tuple[Tuple[float, float, float], ...] = (
+        (0.0, 0.0, 30.0),
+        (100.0, 0.0, 30.0),
+        (100.0, 100.0, 35.0),
+        (200.0, 100.0, 35.0),
+        (200.0, 0.0, 30.0),
+    )
+
+CFG = SimConfig()
+
+
+def unit(v: np.ndarray) -> np.ndarray:
+    n = np.linalg.norm(v)
+    return v / n if n > 1e-12 else np.zeros_like(v)
+
+
+def clip_norm(v: np.ndarray, max_norm: float) -> np.ndarray:
+    n = np.linalg.norm(v)
+    if n <= max_norm or n < 1e-12:
+        return v
+    return v * (max_norm / n)
+
+
+def point_segment_distance(p: np.ndarray, a: np.ndarray, b: np.ndarray) -> float:
+    ab = b - a
+    denom = float(np.dot(ab, ab))
+    if denom < 1e-12:
+        return float(np.linalg.norm(p - a))
+    t = float(np.dot(p - a, ab) / denom)
+    t = min(1.0, max(0.0, t))
+    proj = a + t * ab
+    return float(np.linalg.norm(p - proj))
+
+
+def route_distance(p: np.ndarray, waypoints: np.ndarray) -> float:
+    return min(point_segment_distance(p, waypoints[i], waypoints[i + 1]) for i in range(len(waypoints) - 1))
+
+
+def ece_score(y_true: np.ndarray, p: np.ndarray, n_bins: int = 10) -> float:
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    ece = 0.0
+    for lo, hi in zip(bins[:-1], bins[1:]):
+        mask = (p >= lo) & (p < hi if hi < 1 else p <= hi)
+        if not np.any(mask):
+            continue
+        acc = np.mean(y_true[mask])
+        conf = np.mean(p[mask])
+        ece += np.mean(mask) * abs(acc - conf)
+    return float(ece)
+
+
+def sample_attack_parameters(scenario: str, rng: np.random.Generator) -> Dict[str, float]:
+    theta = rng.uniform(0, 2 * np.pi)
+    d = np.array([np.cos(theta), np.sin(theta), 0.0])
+    params: Dict[str, float] = {
+        "attack_dir_x": float(d[0]),
+        "attack_dir_y": float(d[1]),
+        "abrupt_pos_bias_m": 0.0,
+        "abrupt_vel_bias_mps": 0.0,
+        "gradual_rate_mps": 0.0,
+        "comm_delay_s": 0.0,
+        "degradation_sigma_multiplier": 1.0,
+    }
+    if scenario == "abrupt_spoof":
+        params["abrupt_pos_bias_m"] = float(rng.uniform(12.0, 25.0))
+        params["abrupt_vel_bias_mps"] = float(rng.uniform(0.0, 0.8))
+    elif scenario in {"gradual_spoof", "spoof_comm"}:
+        params["gradual_rate_mps"] = float(rng.uniform(0.25, 0.80))
+    if scenario in {"comm_delay", "spoof_comm"}:
+        params["comm_delay_s"] = float(rng.uniform(0.55, 1.20))
+    if scenario == "gnss_degradation":
+        params["degradation_sigma_multiplier"] = float(rng.uniform(2.5, 4.5))
+    return params
+
+
+def attack_bias(t: float, scenario: str, params: Dict[str, float], cfg: SimConfig) -> Tuple[np.ndarray, np.ndarray]:
+    pos = np.zeros(3)
+    vel = np.zeros(3)
+    if t < cfg.attack_start_s:
+        return pos, vel
+    d = np.array([params["attack_dir_x"], params["attack_dir_y"], 0.0])
+    if scenario == "abrupt_spoof":
+        pos = d * params["abrupt_pos_bias_m"]
+        vel = d * params["abrupt_vel_bias_mps"]
+    elif scenario in {"gradual_spoof", "spoof_comm"}:
+        tau = t - cfg.attack_start_s
+        rate = params["gradual_rate_mps"]
+        pos = d * min(rate * tau, 30.0)
+        vel = d * rate if rate * tau < 30.0 else np.zeros(3)
+    return pos, vel
+
+
+def comm_delay(t: float, scenario: str, params: Dict[str, float], cfg: SimConfig) -> float:
+    if scenario in {"comm_delay", "spoof_comm"} and cfg.attack_start_s <= t <= cfg.event_end_s:
+        return params["comm_delay_s"]
+    return 0.0
+
+
+def generate_gnss(
+    p: np.ndarray,
+    v: np.ndarray,
+    t: float,
+    scenario: str,
+    params: Dict[str, float],
+    rng: np.random.Generator,
+    cfg: SimConfig,
+) -> Tuple[np.ndarray, np.ndarray]:
+    mult = 1.0
+    benign_bias = np.zeros(3)
+    if scenario == "gnss_degradation" and cfg.attack_start_s <= t <= cfg.attack_start_s + 7.0:
+        mult = params["degradation_sigma_multiplier"]
+        # bounded, transient multipath-like bias surrogate; not labeled as an RF model
+        phase = 2 * np.pi * (t - cfg.attack_start_s) / 7.0
+        benign_bias = np.array([2.0 * np.sin(phase), 1.5 * np.cos(0.7 * phase), 0.4 * np.sin(0.5 * phase)])
+    pos_noise = rng.normal(0.0, cfg.gnss_pos_sigma_m * mult, 3)
+    vel_noise = rng.normal(0.0, cfg.gnss_vel_sigma_mps * mult, 3)
+    a_pos, a_vel = attack_bias(t, scenario, params, cfg)
+    return p + pos_noise + benign_bias + a_pos, v + vel_noise + a_vel
+
+
+def controller(nav_p: np.ndarray, nav_v: np.ndarray, target: np.ndarray, cfg: SimConfig) -> np.ndarray:
+    delta = target - nav_p
+    dist = np.linalg.norm(delta)
+    speed = cfg.desired_speed_mps * min(1.0, max(0.25, dist / 20.0))
+    v_des = unit(delta) * speed
+    a = 1.1 * (v_des - nav_v)
+    return clip_norm(a, cfg.max_accel_mps2)
+
+
+def initial_state(cfg: SimConfig) -> Tuple[np.ndarray, np.ndarray]:
+    p = np.array(cfg.waypoints[0], dtype=float)
+    v = np.zeros(3)
+    return p, v
+
+
+def simulate_trace(seed: int, scenario: str, cfg: SimConfig = CFG) -> Tuple[pd.DataFrame, Dict[str, float]]:
+    """Open-loop-with-respect-to-detector trace. GNSS attack can influence vehicle controller."""
+    rng = np.random.default_rng(seed)
+    params = sample_attack_parameters(scenario, rng)
+    wp = np.array(cfg.waypoints, dtype=float)
+    p, v = initial_state(cfg)
+    ind_pos_bias = np.zeros(3)
+    ind_vel_bias = np.zeros(3)
+    ind_p = p.copy()
+    ind_v = v.copy()
+    nav_p = p.copy()
+    nav_v = v.copy()
+    twin_p = p.copy()
