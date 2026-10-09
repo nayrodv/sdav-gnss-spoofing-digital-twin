@@ -1,0 +1,99 @@
+from pathlib import Path
+import json, math
+import pandas as pd
+from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT, WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.section import WD_SECTION
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
+
+ROOT=Path(__file__).resolve().parent; R=ROOT/'results'; F=ROOT/'figures'
+OUT=ROOT/'SDAV_GNSS_Spoofing_Executed_PoC_Report.docx'
+
+def set_cell_shading(cell, fill='E7E6E6'):
+    tcPr=cell._tc.get_or_add_tcPr(); shd=OxmlElement('w:shd'); shd.set(qn('w:fill'),fill); tcPr.append(shd)
+
+def add_table(doc, headers, rows, widths=None, font_size=8):
+    table=doc.add_table(rows=1, cols=len(headers)); table.alignment=WD_TABLE_ALIGNMENT.CENTER; table.style='Table Grid'
+    hdr=table.rows[0].cells
+    for i,h in enumerate(headers):
+        hdr[i].text=str(h); set_cell_shading(hdr[i]); hdr[i].vertical_alignment=WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        for run in hdr[i].paragraphs[0].runs: run.font.bold=True; run.font.size=Pt(font_size)
+    for row in rows:
+        cells=table.add_row().cells
+        for i,v in enumerate(row):
+            cells[i].text='' if v is None or (isinstance(v,float) and math.isnan(v)) else str(v)
+            cells[i].vertical_alignment=WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            for p in cells[i].paragraphs:
+                for run in p.runs: run.font.size=Pt(font_size)
+    if widths:
+        for row in table.rows:
+            for i,w in enumerate(widths): row.cells[i].width=Inches(w)
+    doc.add_paragraph()
+    return table
+
+def add_caption(doc,text):
+    p=doc.add_paragraph(); p.alignment=WD_ALIGN_PARAGRAPH.CENTER
+    r=p.add_run(text); r.italic=True; r.font.size=Pt(9)
+
+def add_bullet(doc,text):
+    p=doc.add_paragraph(text,style='List Bullet'); p.paragraph_format.space_after=Pt(2); return p
+
+info=json.load(open(R/'trained_detector_parameters.json'))
+det=pd.read_csv(R/'detection_confidence_intervals.csv')
+scen=pd.read_csv(R/'detection_by_scenario.csv')
+stress=pd.read_csv(R/'stress_test_summary.csv')
+resp=pd.read_csv(R/'response_summary.csv')
+paired=pd.read_csv(R/'response_paired_tests.csv')
+verify=pd.read_csv(R/'requirements_verification_status.csv')
+
+doc=Document()
+sec=doc.sections[0]; sec.top_margin=Inches(.7); sec.bottom_margin=Inches(.7); sec.left_margin=Inches(.75); sec.right_margin=Inches(.75)
+styles=doc.styles
+styles['Normal'].font.name='Arial'; styles['Normal'].font.size=Pt(10)
+for sname in ['Heading 1','Heading 2','Heading 3']:
+    styles[sname].font.name='Arial'
+styles['Heading 1'].font.size=Pt(15); styles['Heading 2'].font.size=Pt(12)
+
+t=doc.add_paragraph(); t.alignment=WD_ALIGN_PARAGRAPH.CENTER
+r=t.add_run('Executed Proof-of-Concept Report\nDigital Twin Assisted GNSS Spoofing Detection and Bounded Response'); r.bold=True; r.font.size=Pt(18)
+p=doc.add_paragraph(); p.alignment=WD_ALIGN_PARAGRAPH.CENTER
+r=p.add_run('Research execution record for the revised SDAV manuscript'); r.italic=True; r.font.size=Pt(11)
+
+p=doc.add_paragraph()
+r=p.add_run('Status statement. '); r.bold=True
+p.add_run('A genuine PX4/Gazebo/ROS 2 software-in-the-loop experiment could not be executed in the present environment because ROS 2, Gazebo, Docker/Podman, and PX4 were not available, and the execution shell could not resolve GitHub to obtain the PX4 source. The experiment reported here is therefore an executed reduced-order 3D cyber-physical proof of concept. It implements the architecture logic but must not be described as PX4/Gazebo validation, hardware-in-the-loop validation, or flight validation.')
+
+doc.add_heading('1. Purpose and evidential scope',level=1)
+doc.add_paragraph('The purpose of this proof of concept was to test whether the principal information flows proposed in the manuscript can be implemented in an executable system: GNSS measurements are compared with a predictive digital twin and a GNSS-independent navigation source; the resulting residual evidence is interpreted by a probabilistic classifier; an assurance rule prevents stale digital-twin information from independently authorizing a response; and a bounded response can isolate GNSS and continue or terminate the mission using independent navigation. The experiment was designed as an architecture-level feasibility test rather than a realistic radio-frequency representation of GNSS spoofing.')
+doc.add_paragraph('This scope is consistent with the literature showing that UAVs can be manipulated by deceptive GPS signals (Kerns et al., 2014), that spoofing defenses benefit from independent observables (Psiaki and Humphreys, 2016), and that independent inertial information can support spoofing detection (Vinoj and Lalu, 2024). The use of a model-based backup for recovery is also consistent with prior work demonstrating software-sensor recovery on robotic vehicles, including a quadrotor (Choi et al., 2020). These studies motivate the architecture but do not validate the numerical results of this simulator.')
+
+doc.add_heading('2. Executed system',level=1)
+doc.add_paragraph('The simulator uses a reduced-order three-dimensional translational vehicle model following a five-waypoint mission. Vehicle acceleration is generated by a bounded waypoint controller. The operational estimator is GNSS-dominant before detection and switches to a separate odometry surrogate after GNSS isolation. The digital twin propagates position and velocity using recent control inputs and is corrected by the independent odometry stream. Communication-delay scenarios delay these external twin inputs without altering the independent onboard navigation surrogate.')
+
+add_table(doc,['Element','Executed implementation'],[
+    ['Vehicle','3D translational waypoint-following surrogate; 20 Hz dynamics and control'],
+    ['GNSS','5 Hz position and velocity observations with declared simulation noise'],
+    ['Independent source','GNSS-independent odometry surrogate with measurement noise and random-walk bias'],
+    ['Digital twin','Control-driven state propagation with independent-telemetry correction'],
+    ['Evidence','Covariance-normalized twin residual, independent-navigation residual, and GNSS temporal residual'],
+    ['Classifier','Standardized logistic regression using five multi-source features'],
+    ['Assurance','Probability threshold + temporal persistence + stale-twin gate requiring independent evidence'],
+    ['Response','Detection-only; fixed route-retracing return-to-base; or GNSS isolation with mission continuation'],
+],font_size=8)
+
+doc.add_heading('3. Experimental design',level=1)
+doc.add_paragraph('Residual covariance matrices were estimated from a separate set of 25 nominal calibration trials. Detector thresholds were then established using a separate benign calibration set containing nominal operation, temporary GNSS degradation, and communication delay. Classifier training, validation, and held-out testing used disjoint random seeds so that individual simulation traces did not appear in more than one partition.')
+add_table(doc,['Partition','Trials'],[
+    ['Residual covariance calibration','25 nominal'],
+    ['Benign threshold calibration','10 nominal + 10 GNSS degradation + 10 communication delay'],
+    ['Classifier training','20 per scenario across six scenarios (120 total)'],
+    ['Validation','8 per scenario (48 total)'],
+    ['Held-out test','20 per scenario (120 total: 60 attack, 60 benign)'],
+    ['Response-policy experiment','20 per scenario per policy (360 policy runs); identical seeds reused across policies'],
+    ['Weak-attack stress test','30 trials per attack scenario (90 total)'],
+],font_size=8)
+
+doc.add_paragraph('The primary training/test attack family sampled abrupt horizontal position steps from 12 to 25 m with an additional 0 to 0.8 m/s velocity bias, or gradual horizontal carry-off rates from 0.25 to 0.80 m/s capped at 30 m. The combined spoofing-and-communication scenario additionally imposed 0.55 to 1.20 s of external-twin telemetry delay. These values are experimental simulator parameters, not claims about typical real-world spoofing magnitudes or aircraft tolerances.')
