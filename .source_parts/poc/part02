@@ -1,0 +1,169 @@
+: float(tp / (tp + fp)) if tp + fp else np.nan,
+        "trial_recall": float(tp / (tp + fn)) if tp + fn else np.nan,
+        "trial_f1": float(2 * tp / (2 * tp + fp + fn)) if 2 * tp + fp + fn else np.nan,
+        "trial_false_alarm_rate": float(fp / (fp + tn)) if fp + tn else np.nan,
+        "trial_miss_rate": float(fn / (fn + tp)) if fn + tp else np.nan,
+        "median_detection_latency_s": float(lat.median()) if len(lat) else np.nan,
+        "p95_detection_latency_s": float(lat.quantile(0.95)) if len(lat) else np.nan,
+        "tp": int(tp), "fp": int(fp), "tn": int(tn), "fn": int(fn),
+    }
+
+
+def tune_persistence(df_val: pd.DataFrame, score_col: str, threshold: float, assurance: bool,
+                     stale_cutoff: float, high_ind_threshold: float) -> Tuple[int, Dict[str, float]]:
+    choices = []
+    for p in range(1, 7):
+        a = trial_alerts(df_val, score_col, threshold, p, assurance, stale_cutoff, high_ind_threshold)
+        m = event_metrics(a)
+        choices.append((p, m))
+    feasible = [(p,m) for p,m in choices if m["trial_false_alarm_rate"] <= 0.05]
+    if feasible:
+        return max(feasible, key=lambda x: (x[1]["trial_f1"], x[1]["trial_recall"], -x[0]))
+    return min(choices, key=lambda x: (x[1]["trial_false_alarm_rate"], -x[1]["trial_f1"]))
+
+
+def tune_classifier(df_val: pd.DataFrame, prob_col: str, stale_cutoff: float, high_ind_threshold: float) -> Tuple[float,int,Dict[str,float]]:
+    y = df_val["attack_active"].to_numpy().astype(int)
+    score = df_val[prob_col].to_numpy()
+    # Candidate thresholds from score quantiles; select the best sample-level F1
+    # subject to <=1% false-positive rate on benign samples when possible.
+    candidates = np.unique(np.quantile(score, np.linspace(0.50, 0.999, 120)))
+    options = []
+    for th in candidates:
+        pred = score >= th
+        neg = y == 0; pos = y == 1
+        fpr = float(np.mean(pred[neg])) if np.any(neg) else 0.0
+        tp = int(np.sum(pred & pos)); fp = int(np.sum(pred & neg)); fn = int(np.sum((~pred) & pos))
+        f1 = (2*tp/(2*tp+fp+fn)) if (2*tp+fp+fn) else 0.0
+        options.append((float(th), fpr, f1))
+    feasible = [o for o in options if o[1] <= 0.01]
+    th = max(feasible, key=lambda o:o[2])[0] if feasible else max(options, key=lambda o:o[2])[0]
+    p, m = tune_persistence(df_val, prob_col, th, True, stale_cutoff, high_ind_threshold)
+    return th, p, m
+
+def sample_level_metrics(y: np.ndarray, score: np.ndarray, threshold: float) -> Dict[str, float]:
+    pred = (score >= threshold).astype(int)
+    out = {
+        "sample_precision": precision_score(y, pred, zero_division=0),
+        "sample_recall": recall_score(y, pred, zero_division=0),
+        "sample_f1": f1_score(y, pred, zero_division=0),
+        "sample_accuracy": accuracy_score(y, pred),
+    }
+    if len(np.unique(y)) == 2:
+        out["roc_auc"] = roc_auc_score(y, score)
+    return {k: float(v) for k,v in out.items()}
+
+
+def simulate_closed_loop(seed: int, scenario: str, detector: Pipeline, prob_threshold: float, persistence: int,
+                         inv_twin: np.ndarray, inv_ind: np.ndarray, inv_dyn: np.ndarray,
+                         stale_cutoff: float, high_ind_threshold: float, strategy: str,
+                         cfg: SimConfig = CFG) -> Dict[str, float]:
+    """Closed-loop evaluation of response policies using the trained multi-source detector."""
+    rng = np.random.default_rng(seed)
+    params = sample_attack_parameters(scenario, rng)
+    scaler_mean = detector.named_steps["scale"].mean_
+    scaler_scale = detector.named_steps["scale"].scale_
+    lr_coef = detector.named_steps["lr"].coef_[0]
+    lr_intercept = float(detector.named_steps["lr"].intercept_[0])
+    wp = np.array(cfg.waypoints, dtype=float)
+    p, v = initial_state(cfg)
+    ind_pos_bias = np.zeros(3)
+    ind_vel_bias = np.zeros(3)
+    ind_p = p.copy(); ind_v = v.copy()
+    nav_p = p.copy(); nav_v = v.copy()
+    twin_p = p.copy(); twin_v = v.copy()
+    mission_targets = list(range(1, len(wp)))
+    target_idx = 1
+    current_target = wp[target_idx].copy()
+    mode = "mission"
+    gnss_isolated = False
+    alert_time = None
+    response_time = None
+    route_recovery_time = None
+    recovery_counter = 0
+    mission_completed = False
+    returned_home = False
+    max_route_error = 0.0
+    max_route_error_post_attack = 0.0
+    path_length = 0.0
+    prev_true_p = p.copy()
+
+    gnss_p = p.copy(); gnss_v = v.copy()
+    prev_gnss_p = None; prev_gnss_v = None; prev_gnss_t = None
+    hist_ind_p: List[np.ndarray] = []
+    hist_ind_v: List[np.ndarray] = []
+    hist_cmd: List[np.ndarray] = []
+    consecutive = 0
+
+    steps = int(round(cfg.duration_s / cfg.dt)) + 1
+    gnss_stride = max(1, int(round(cfg.gnss_period_s / cfg.dt)))
+
+    for k in range(steps):
+        t = k * cfg.dt
+        ind_pos_bias += rng.normal(0.0, cfg.ind_pos_bias_rw_sigma, 3)
+        ind_vel_bias += rng.normal(0.0, cfg.ind_vel_bias_rw_sigma, 3)
+        ind_p = p + ind_pos_bias + rng.normal(0.0, cfg.ind_pos_sigma_m, 3)
+        ind_v = v + ind_vel_bias + rng.normal(0.0, cfg.ind_vel_sigma_mps, 3)
+
+        # target management
+        if mode == "mission":
+            if target_idx < len(wp) - 1 and np.linalg.norm(nav_p - wp[target_idx]) <= cfg.waypoint_radius_m:
+                target_idx += 1
+            current_target = wp[target_idx]
+        elif mode == "rtb":
+            # retrace preceding mission waypoints to remain near the authorized corridor
+            if np.linalg.norm(nav_p - current_target) <= cfg.waypoint_radius_m:
+                if target_idx > 0:
+                    target_idx -= 1
+                    current_target = wp[target_idx]
+            if target_idx == 0 and np.linalg.norm(nav_p - wp[0]) <= cfg.completion_radius_m:
+                returned_home = True
+
+        a_cmd = controller(nav_p, nav_v, current_target, cfg)
+        a_true = a_cmd + rng.normal(0.0, cfg.process_accel_sigma, 3)
+        v = v + a_true * cfg.dt
+        p = p + v * cfg.dt
+        path_length += float(np.linalg.norm(p - prev_true_p)); prev_true_p = p.copy()
+
+        hist_ind_p.append(ind_p.copy()); hist_ind_v.append(ind_v.copy()); hist_cmd.append(a_cmd.copy())
+        delay_s = comm_delay(t, scenario, params, cfg)
+        delay_steps = int(round(delay_s / cfg.dt)); idx = max(0, k - delay_steps)
+        delayed_cmd = hist_cmd[idx]; delayed_ind_p = hist_ind_p[idx]; delayed_ind_v = hist_ind_v[idx]
+        twin_p = twin_p + twin_v * cfg.dt + 0.5 * delayed_cmd * cfg.dt**2
+        twin_v = twin_v + delayed_cmd * cfg.dt
+        twin_p += cfg.twin_pos_gain * (delayed_ind_p - twin_p)
+        twin_v += cfg.twin_vel_gain * (delayed_ind_v - twin_v)
+
+        rerr = route_distance(p, wp)
+        max_route_error = max(max_route_error, rerr)
+        if t >= cfg.attack_start_s:
+            max_route_error_post_attack = max(max_route_error_post_attack, rerr)
+        if alert_time is not None and mode == "mission":
+            if rerr <= cfg.recovery_route_threshold_m:
+                recovery_counter += 1
+                if route_recovery_time is None and recovery_counter * cfg.dt >= cfg.recovery_hold_s:
+                    route_recovery_time = t - alert_time
+            else:
+                recovery_counter = 0
+
+        if mode == "mission" and target_idx == len(wp)-1 and np.linalg.norm(p - wp[-1]) <= cfg.completion_radius_m:
+            mission_completed = True
+
+        if k % gnss_stride == 0:
+            gnss_p, gnss_v = generate_gnss(p, v, t, scenario, params, rng, cfg)
+            if gnss_isolated:
+                nav_p = ind_p.copy(); nav_v = ind_v.copy()
+            else:
+                w = cfg.gnss_nav_weight
+                nav_p = w * gnss_p + (1.0-w) * ind_p
+                nav_v = w * gnss_v + (1.0-w) * ind_v
+
+            r_twin = np.concatenate([gnss_p - twin_p, gnss_v - twin_v])
+            r_ind = np.concatenate([gnss_p - ind_p, gnss_v - ind_v])
+            if prev_gnss_p is None:
+                r_dyn = np.zeros(6)
+            else:
+                dtt = t - prev_gnss_t
+                pred_p = prev_gnss_p + prev_gnss_v * dtt
+                pred_v = prev_gnss_v
+                r_dyn = np.concatenate([gnss_p - pred_p, gnss_v - pred_v])
