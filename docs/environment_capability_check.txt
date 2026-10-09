@@ -1,0 +1,22 @@
+Proof-of-concept execution environment capability check
+Date: 2026-08-18 (session date)
+
+Detected:
+- Python 3.13.5
+- GNU Make available
+- Git available
+- CMake 3.31.6
+- Ninja 1.12.1
+- GCC 14.2.0
+
+Not detected on PATH:
+- ROS 2 command (ros2)
+- Gazebo commands (gz, gazebo)
+- Docker
+- Podman
+
+Network check from shell:
+- git ls-remote https://github.com/PX4/PX4-Autopilot.git failed because github.com could not be resolved from the execution shell.
+
+Consequence:
+A genuine PX4 + Gazebo + ROS 2 SITL experiment could not be executed in this environment. The executed experiment in this package is therefore a reduced-order 3D translational cyber-physical surrogate. It must not be described as PX4/Gazebo validation or flight validation.

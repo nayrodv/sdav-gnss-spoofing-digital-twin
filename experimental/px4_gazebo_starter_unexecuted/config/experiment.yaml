@@ -1,0 +1,5 @@
+digital_twin_guard:
+  ros__parameters:
+    minimum_threshold_m: 5.0
+    persistence_samples: 8
+    baseline_samples: 200

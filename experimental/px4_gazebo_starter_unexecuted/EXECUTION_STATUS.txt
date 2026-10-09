@@ -1,0 +1,2 @@
+UNEXECUTED STARTER CODE.
+This directory was syntax-checked previously but was not run against PX4, Gazebo, or ROS 2 in the current environment. It is provided only to accelerate the next real SITL stage.

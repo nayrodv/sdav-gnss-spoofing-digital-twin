@@ -1,0 +1,55 @@
+name: Reproduce proof of concept
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'results/**'
+      - 'figures/**'
+      - 'docs/SDAV_GNSS_Spoofing_Executed_PoC_Report.docx'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  reproduce:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run full reproducibility pipeline
+        run: python run_all.py
+
+      - name: Build execution report
+        run: |
+          python create_report_docx.py
+          mkdir -p docs
+          mv -f SDAV_GNSS_Spoofing_Executed_PoC_Report.docx docs/
+
+      - name: Commit regenerated artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results figures docs/SDAV_GNSS_Spoofing_Executed_PoC_Report.docx
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "Regenerate reproducibility outputs"
+            git push
+          fi
