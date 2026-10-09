@@ -114,7 +114,7 @@ These results are conditional on the synthetic simulator, declared attack family
 
 `docs/` contains the executed proof-of-concept report, environment capability check, and next-stage PX4 protocol.
 
-The repository includes a GitHub Actions workflow that reruns the full pipeline on changes to the reproducibility source files and commits the regenerated results, figures, and report back to the repository. This keeps the public artifacts synchronized with the executable code.
+The repository includes a GitHub Actions workflow that reruns the full pipeline on changes to the reproducibility source files and commits the regenerated results, figures, and report back to the repository. This keeps the public artifacts synchronized with the executable code and provides an independent automated reproduction check.
 
 ## Citation
 
