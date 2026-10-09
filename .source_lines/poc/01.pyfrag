@@ -1,0 +1,160 @@
+    vel = np.zeros(3)
+    if t < cfg.attack_start_s:
+        return pos, vel
+    d = np.array([params["attack_dir_x"], params["attack_dir_y"], 0.0])
+    if scenario == "abrupt_spoof":
+        pos = d * params["abrupt_pos_bias_m"]
+        vel = d * params["abrupt_vel_bias_mps"]
+    elif scenario in {"gradual_spoof", "spoof_comm"}:
+        tau = t - cfg.attack_start_s
+        rate = params["gradual_rate_mps"]
+        pos = d * min(rate * tau, 30.0)
+        vel = d * rate if rate * tau < 30.0 else np.zeros(3)
+    return pos, vel
+
+
+def comm_delay(t: float, scenario: str, params: Dict[str, float], cfg: SimConfig) -> float:
+    if scenario in {"comm_delay", "spoof_comm"} and cfg.attack_start_s <= t <= cfg.event_end_s:
+        return params["comm_delay_s"]
+    return 0.0
+
+
+def generate_gnss(
+    p: np.ndarray,
+    v: np.ndarray,
+    t: float,
+    scenario: str,
+    params: Dict[str, float],
+    rng: np.random.Generator,
+    cfg: SimConfig,
+) -> Tuple[np.ndarray, np.ndarray]:
+    mult = 1.0
+    benign_bias = np.zeros(3)
+    if scenario == "gnss_degradation" and cfg.attack_start_s <= t <= cfg.attack_start_s + 7.0:
+        mult = params["degradation_sigma_multiplier"]
+        # bounded, transient multipath-like bias surrogate; not labeled as an RF model
+        phase = 2 * np.pi * (t - cfg.attack_start_s) / 7.0
+        benign_bias = np.array([2.0 * np.sin(phase), 1.5 * np.cos(0.7 * phase), 0.4 * np.sin(0.5 * phase)])
+    pos_noise = rng.normal(0.0, cfg.gnss_pos_sigma_m * mult, 3)
+    vel_noise = rng.normal(0.0, cfg.gnss_vel_sigma_mps * mult, 3)
+    a_pos, a_vel = attack_bias(t, scenario, params, cfg)
+    return p + pos_noise + benign_bias + a_pos, v + vel_noise + a_vel
+
+
+def controller(nav_p: np.ndarray, nav_v: np.ndarray, target: np.ndarray, cfg: SimConfig) -> np.ndarray:
+    delta = target - nav_p
+    dist = np.linalg.norm(delta)
+    speed = cfg.desired_speed_mps * min(1.0, max(0.25, dist / 20.0))
+    v_des = unit(delta) * speed
+    a = 1.1 * (v_des - nav_v)
+    return clip_norm(a, cfg.max_accel_mps2)
+
+
+def initial_state(cfg: SimConfig) -> Tuple[np.ndarray, np.ndarray]:
+    p = np.array(cfg.waypoints[0], dtype=float)
+    v = np.zeros(3)
+    return p, v
+
+
+def simulate_trace(seed: int, scenario: str, cfg: SimConfig = CFG) -> Tuple[pd.DataFrame, Dict[str, float]]:
+    """Open-loop-with-respect-to-detector trace. GNSS attack can influence vehicle controller."""
+    rng = np.random.default_rng(seed)
+    params = sample_attack_parameters(scenario, rng)
+    wp = np.array(cfg.waypoints, dtype=float)
+    p, v = initial_state(cfg)
+    ind_pos_bias = np.zeros(3)
+    ind_vel_bias = np.zeros(3)
+    ind_p = p.copy()
+    ind_v = v.copy()
+    nav_p = p.copy()
+    nav_v = v.copy()
+    twin_p = p.copy()
+    twin_v = v.copy()
+    target_idx = 1
+    gnss_p = p.copy()
+    gnss_v = v.copy()
+    prev_gnss_p = None
+    prev_gnss_v = None
+    prev_gnss_t = None
+
+    steps = int(round(cfg.duration_s / cfg.dt)) + 1
+    gnss_stride = max(1, int(round(cfg.gnss_period_s / cfg.dt)))
+    hist_ind_p: List[np.ndarray] = []
+    hist_ind_v: List[np.ndarray] = []
+    hist_cmd: List[np.ndarray] = []
+    rows: List[Dict[str, float]] = []
+
+    for k in range(steps):
+        t = k * cfg.dt
+        # Independent odometry surrogate with low random-walk bias.
+        ind_pos_bias += rng.normal(0.0, cfg.ind_pos_bias_rw_sigma, 3)
+        ind_vel_bias += rng.normal(0.0, cfg.ind_vel_bias_rw_sigma, 3)
+        ind_p = p + ind_pos_bias + rng.normal(0.0, cfg.ind_pos_sigma_m, 3)
+        ind_v = v + ind_vel_bias + rng.normal(0.0, cfg.ind_vel_sigma_mps, 3)
+
+        # Update mission target using current navigation estimate.
+        if target_idx < len(wp) - 1 and np.linalg.norm(nav_p - wp[target_idx]) <= cfg.waypoint_radius_m:
+            target_idx += 1
+        a_cmd = controller(nav_p, nav_v, wp[target_idx], cfg)
+
+        # Truth dynamics: reduced-order translational vehicle surrogate.
+        a_true = a_cmd + rng.normal(0.0, cfg.process_accel_sigma, 3)
+        v = v + a_true * cfg.dt
+        p = p + v * cfg.dt
+
+        hist_ind_p.append(ind_p.copy())
+        hist_ind_v.append(ind_v.copy())
+        hist_cmd.append(a_cmd.copy())
+
+        # Twin propagation + delayed correction from GNSS-independent telemetry.
+        delay_s = comm_delay(t, scenario, params, cfg)
+        delay_steps = int(round(delay_s / cfg.dt))
+        idx = max(0, k - delay_steps)
+        delayed_cmd = hist_cmd[idx]
+        delayed_ind_p = hist_ind_p[idx]
+        delayed_ind_v = hist_ind_v[idx]
+        twin_p = twin_p + twin_v * cfg.dt + 0.5 * delayed_cmd * cfg.dt**2
+        twin_v = twin_v + delayed_cmd * cfg.dt
+        twin_p += cfg.twin_pos_gain * (delayed_ind_p - twin_p)
+        twin_v += cfg.twin_vel_gain * (delayed_ind_v - twin_v)
+
+        if k % gnss_stride == 0:
+            gnss_p, gnss_v = generate_gnss(p, v, t, scenario, params, rng, cfg)
+            # Current navigation estimator surrogate: GNSS-dominant fusion.
+            w = cfg.gnss_nav_weight
+            nav_p = w * gnss_p + (1.0 - w) * ind_p
+            nav_v = w * gnss_v + (1.0 - w) * ind_v
+
+            r_twin = np.concatenate([gnss_p - twin_p, gnss_v - twin_v])
+            r_ind = np.concatenate([gnss_p - ind_p, gnss_v - ind_v])
+            if prev_gnss_p is None:
+                r_dyn = np.zeros(6)
+            else:
+                dtt = t - prev_gnss_t
+                pred_p = prev_gnss_p + prev_gnss_v * dtt
+                pred_v = prev_gnss_v
+                r_dyn = np.concatenate([gnss_p - pred_p, gnss_v - pred_v])
+            row = {
+                "seed": seed,
+                "scenario": scenario,
+                "time_s": t,
+                "attack_active": int(scenario in ATTACK and t >= cfg.attack_start_s),
+                "twin_age_s": delay_s,
+                "route_error_true_m": route_distance(p, wp),
+                "route_error_gnss_m": route_distance(gnss_p, wp),
+                "true_x": p[0], "true_y": p[1], "true_z": p[2],
+                "gps_x": gnss_p[0], "gps_y": gnss_p[1], "gps_z": gnss_p[2],
+                "ind_x": ind_p[0], "ind_y": ind_p[1], "ind_z": ind_p[2],
+                "twin_x": twin_p[0], "twin_y": twin_p[1], "twin_z": twin_p[2],
+            }
+            for i in range(6):
+                row[f"rt_{i}"] = r_twin[i]
+                row[f"ri_{i}"] = r_ind[i]
+                row[f"rg_{i}"] = r_dyn[i]
+            rows.append(row)
+            prev_gnss_p = gnss_p.copy()
+            prev_gnss_v = gnss_v.copy()
+            prev_gnss_t = t
+        else:
+            # Between GNSS samples, propagate nav estimate using latest velocity.
+            nav_p = nav_p + nav_v * cfg.dt
