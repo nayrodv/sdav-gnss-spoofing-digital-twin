@@ -92,8 +92,8 @@ add_table(doc,['Partition','Trials'],[
     ['Classifier training','20 per scenario across six scenarios (120 total)'],
     ['Validation','8 per scenario (48 total)'],
     ['Held-out test','20 per scenario (120 total: 60 attack, 60 benign)'],
-    ['Response-policy experiment','20 per scenario per policy (360 policy runs)'],
-    ['Weak-attack stress test','30 per attack scenario (90 total)'],
+    ['Response-policy experiment','20 per scenario per policy (360 policy runs); identical seeds reused across policies'],
+    ['Weak-attack stress test','30 trials per attack scenario (90 total)'],
 ],font_size=8)
 
 doc.add_paragraph('The primary training/test attack family sampled abrupt horizontal position steps from 12 to 25 m with an additional 0 to 0.8 m/s velocity bias, or gradual horizontal carry-off rates from 0.25 to 0.80 m/s capped at 30 m. The combined spoofing-and-communication scenario additionally imposed 0.55 to 1.20 s of external-twin telemetry delay. These values are experimental simulator parameters, not claims about typical real-world spoofing magnitudes or aircraft tolerances.')
@@ -101,42 +101,42 @@ doc.add_paragraph('The weak-attack stress test intentionally moved outside the t
 
 doc.add_heading('4. Detection methods',level=1)
 doc.add_paragraph('Three detection configurations were compared. The GNSS-only temporal baseline used consistency between consecutive GNSS position/velocity observations. The twin-residual baseline used only the covariance-normalized disagreement between GNSS and the digital twin. The proposed detector combined the twin residual, the independent-navigation residual, the GNSS temporal residual, twin age, and GNSS route deviation in a logistic-regression classifier. A response alert required three consecutive positive samples. When the twin was stale, the alert additionally required strong independent-navigation evidence. Thresholds and persistence were selected using the validation data rather than the held-out test data.')
-doc.add_paragraph(f'The final multi-source probability threshold was {info["probability_threshold"]:.3f}, with {info["persistence_samples"]} consecutive 5 Hz samples required for an event-level alert. On the held-out sample-level data, the probability output had a Brier score of {info["test_probability_calibration"]["brier_score"]:.3f}, a 10-bin expected calibration error of {info["test_probabity_calibration"]["ece_10_bins"]:.3f}, and an ROC AUC of {info["test_probability_calibration"]["roc_auc_probability"]:.3f}. These numbers describe calibration within this synthetic data-generating process and are not real-world AI assurance evidence.')
+
+doc.add_paragraph(f"The final multi-source probability threshold was {info['probability_threshold']:.3f}, with {int(info['persistence_samples'])} consecutive 5 Hz samples required for an event-level alert. On the held-out sample-level data, the probability output had a Brier score of {info['test_probability_calibration']['brier_score']:.3f}, a 10-bin expected calibration error of {info['test_probability_calibration']['ece_10_bins']:.3f}, and an ROC AUC of {info['test_probability_calibration']['roc_auc_probability']:.3f}. These values describe calibration within this synthetic data-generating process and should not be interpreted as real-world AI assurance evidence.")
 
 doc.add_heading('5. Held-out detection results',level=1)
 rows=[]
 for _,r in det.iterrows():
-    rows.append([r.method,f'{int(r.attack_detected)}/{int(r.attack_trials)}',f'{r.recall:.3f} ({r.recall_ci95_low:.3f}â€“{r.recall_ci95_high:.3f})',f'{int(r.benign_false_alerts)}/{int(r.benign_trials)}',f'{r.false_alarm_rate:.3f} ({r.far_ci95_low:.3f}â€“{r.far_ci95_high:.3f})','' if pd.isna(r.median_latency_s) else f'{r.median_latency_s:.1f}'])
-add_table(doc,['Method','Attacks detected','Recall (95% Wilson CI)','Benign false alerts','False-alert rate (95% Wilson CI)','Median latency (s)'],rows,font_size=7)
-doc.add_paragraph('The GNSS-only temporal baseline did not detect any of the 60 held-out attack trials. This outcome is consistent with the design of the simulated attacks: both abrupt and gradual manipulations were constructed to preserve enough temporal coherence that consecutive GNSS observations alone were weak evidence. The twin-only detector detected 54 of 60 attack trials, but its median latency was 24.1 s and one benign communication-delay trial generated an event-level alert. The multi-source detector generated alerts in all 60 held-out attack trials and none of the 60 benign trials. The corresponding 95% Wilson interval for attack recall was 0.940â€“1.000 and for the false-alert rate was 0â€“0.060. The finite-sample intervals are important: the observed 100%/0% rates do not establish perfect population performance.')
-doc.add_picture(str(F/'detection_performance.png'),width=Inches(6.1)); add_caption(doc,'Figure 1. Held-out trial-level detection performance in the reduced-order simulator.')
+    rows.append([r['method'],f"{int(r.attack_detected)}/{int(r.attack_trials)}",f"{r.recall:.3f} ({r.recall_ci95_low:.3f}-{r.recall_ci95_high:.3f})",f"{int(r.benign_false_alerts)}/{int(r.benign_trials)}",f"{r.false_alarm_rate:.3f} ({r.far_ci95_low:.3f}-{r.far_ci95_high:.3f})",'' if pd.isna(r.median_latency_s) else f"{r.median_latency_s:.1f}"])
+add_table(doc,['Method','Attacks detected','Recall (95% Wilson CI)','Benign false alerts','False-alert rate (95% CI)','Median latency (s)'],rows,font_size=7.5)
 
-doc.add_heading('6. Scenario robustness and weak-attack stress test',level=1)
+doc.add_paragraph('The GNSS-only temporal baseline did not detect any of the 60 held-out attack trials. This outcome is consistent with the design of the simulated attacks: both abrupt and gradual manipulations were constructed to preserve enough temporal coherence that consecutive GNSS observations alone were weak evidence. The twin-only detector detected 54 of 60 attack trials, but its median latency was 24.1 s and one benign communication-delay trial generated an event-level alert. The multi-source detector generated alerts in all 60 held-out attack trials and none of the 60 benign trials. The corresponding 95% Wilson interval for attack recall was 0.940â€“1.000 and for the false-alert rate was 0â€“0.060. The finite-sample intervals are important: the observed 100%/0% rates do not establish perfect population performance.')
+
+doc.add_picture(str(F/'detection_performance.png'),width=Inches(6.2)); add_caption(doc,'Figure 1. Held-out trial-level detection performance in the reduced-order simulator.')
+doc.add_picture(str(F/'detection_latency.png'),width=Inches(5.8)); add_caption(doc,'Figure 2. Detection latency for attack trials detected by the twin-only and multi-source methods.')
+
+doc.add_heading('6. Scenario-level and weak-attack behavior',level=1)
 prop=scen[scen.method=='Multi-source + assurance']
 rows=[]
 for _,r in prop.iterrows():
-    rows.append([r.scenario,f"{r.alert_rate:.3f}",'' if pd.isna(r.median_latency_s) else f"{r.median_latency_s:.1f}','' if pd.isna(r.p95_latency_s) else f'{r.p95_latency_s:.1f}'])
-add_table(doc,['Held-out scenario','Alert rate','Median latency (s)','P95 latency (s)'],rows,font_size=8)
-st=stress[stress.method=='Multi-source + assurance']
+    rows.append([r.scenario,f"{r.alert_rate:.2f}",'' if pd.isna(r.median_latency_s) else f"{r.median_latency_s:.1f}",'' if pd.isna(r.p95_latency_s) else f"{r.p95_latency_s:.1f}"])
+add_table(doc,['Scenario','Alert rate','Median latency (s)','95th percentile latency (s)'],rows,font_size=8)
+
+doc.add_paragraph('Abrupt spoofing was detected rapidly in the held-out data, whereas gradual carry-off required longer observation. The combined spoofing-and-communication scenario was slower because stale twin information was not allowed to independently authorize the response. This is a desirable architectural behavior in principle, but the precise latency is specific to this simulator and assurance rule.')
+doc.add_picture(str(F/'gradual_spoof_probability.png'),width=Inches(6.2)); add_caption(doc,'Figure 3. Representative gradual carry-off trial. The vertical line indicates attack onset; the horizontal line is the validation-selected decision threshold.')
+
+stress_prop=stress[stress.method=='Multi-source + assurance']
 rows=[]
-for _,r in st.iterrows():
-    rows.append([r.scenario,f'{r.detection_rate:.3f},f'{r.median_latency_s:.1f}',f'{r.p95_latency_s:.1f}'])
-add_table(doc,['Weak-attack scenario','Detection rate','Median latency (s)','P95 latency (s)'],rows,font_size=8)
-doc.add_paragraph('The additional stress test shows that all 90 weaker attack trials were enduringly detected, but the latency penalty is substantial. The weak abrupt scenario has a median latency of 0.6 s, whereas weak gradual carry-off rises to 29.3 s and weak spoofing with communication delay rises to 32.2 s. The P95 latencies for the two weak gradual cases are 45.2 s and 48.6 s. This is an important qualification: eventual detection at lower magnitude does not imply that detection is sufficiently fast for a safety-critical vehicle.')
-doc.add_picture(str(F/'stress_detection_rate.png'),width=Inches(5.8)); add_caption(doc,'Figure 2. Event-level detection rate for the multi-source detector under the weaker attack stress test.')
+for _,r in stress_prop.iterrows(): rows.append([r.scenario,f"{r.detection_rate:.2f}",f"{r.median_latency_s:.1f}",f"{r.p95_latency_s:.1f}"])
+add_table(doc,['Weak-attack scenario','Detection rate','Median latency (s)','95th percentile latency (s)'],rows,font_size=8)
+doc.add_paragraph('In the out-of-range weak-attack stress test, the multi-source detector still produced an event-level alert in all 90 attack trials, but gradual attacks were much slower: median latency increased to 29.3 s for gradual carry-off and 32.2 s when combined with communication delay. The twin-only detector failed on weak abrupt and weak gradual attacks without communication delay. The stress test therefore provides a more cautious result than the main held-out experiment: the proposed evidence fusion remained sensitive in this simulator, but weak coherent manipulation substantially delayed detection.')
 
-# Create probability plot from representative trace
-tr=pd.read_csv(R/'representative_traces.csv'); tr=tr[tr.rep_scenario=='gradual_spoof']
-import matplotlib.pyplot as plt
-plt.figure(figsize=(8,4.8)); plt.plot(tr.time_s,tr.p_attack,label='Estimated attack probability'); plt.axhline(info['probability_threshold'],linestyle='--',label='Decision threshold'); plt.axvline(30,linestyle=':',label='Attack onset'); plt.xlabel('Time (s)'); plt.ylabel('Attack probability'); plt.ylim(-.02,1.02); plt.title('Representative gradual carry-off: probability and decision threshold'); plt.legend(); plt.tight_layout(); plt.savefig(F/'report_gradual_probability.png,dpi=220); plt.close()
-doc.add_picture(str(F/'report_gradual_probability.png'),width=Inches(6.1)); add_caption(doc,'Figure 3. Representative gradual carry-off trace, showing classifier probability and the validation-selected decision threshold.')
-
-doc.add_heading('7. Response-policy results',level=1)
-doc.add_paragraph('Three policies were evaluated using the same scenario seeds: (1) detection only, in which GNSS remained active; (2) fixed return-to-base, in which GNSS was isolated and the vehicle retraced its previous route using the independent navigation source; and (3) bounded continuation, in which GNSS was isolated and the mission continued using the independent navigation source. The matched-seed design permits paired statistical comparison. The fixed return is intentionally not a single-waypoint homing command: the vehicle retraces the previously authorized route to reduce the need for a new path planner after GNSS is rejected.')
+doc.add_heading('7. Response-policy evaluation',level=1)
+doc.add_paragraph('Response policies were evaluated with identical scenario seeds so that all three policies experienced the same pre-response stochastic conditions. The detection-only condition recorded the alert but did not isolate GNSS. The fixed fail-safe isolated GNSS and retraced previously traversed route segments toward the launch point. The bounded-continuation policy isolated GNSS and continued the mission using the independent navigation surrogate. The comparison therefore evaluates architectural behavior after detection; it is not intended to establish that mission continuation is universally preferable to return-to-base.')
 attack_resp=resp[resp.subset=='attack']
 rows=[]
 for _,r in attack_resp.iterrows():
-    rows.append([r.strategy,f'{r.median_max_route_error_m:.2f}',f'{r.p95_max_route_error_m:.2f}',f'{r.boundary10_violation_rate:.3f}',f'{r.boundary20_violation_rate:.3f}',f'{r.mission_completion_rate:.3f}',f'{r.return_home_rate:.3f}'])
+    rows.append([r.strategy,f"{r.median_max_route_error_m:.2f}",f"{r.p95_max_route_error_m:.2f}",f"{r.boundary10_violation_rate:.3f}",f"{r.boundary20_violation_rate:.3f}",f"{r.mission_completion_rate:.3f}",f"{r.return_home_rate:.3f}"])
 add_table(doc,['Policy','Median max deviation (m)','P95 max deviation (m)','>10 m rate','>20 m rate','Mission completion','Return home'],rows,font_size=7.3)
 
 doc.add_paragraph('Across 60 paired attack trials, the median maximum true route deviation was 17.39 m with detection only, 2.89 m with the fixed return-to-base policy, and 2.63 m with bounded continuation. A paired Wilcoxon signed-rank comparison between detection-only and bounded continuation gave p < 0.001. The fixed and bounded policies also differed statistically (p = 0.00013), but their median paired difference was only 0.20 m; this small effect should not be presented as a practically important safety advantage without a mission-specific safety model. The 10 m and 20 m boundaries used in this analysis are diagnostic thresholds only and are not regulatory or certified safety limits.')
@@ -164,29 +164,21 @@ for text in [
 doc.add_paragraph('Accordingly, a defensible manuscript description would be: â€œA reduced-order software proof of concept was executed to test the internal information-flow and response logic of the proposed architecture.â€ It would not be defensible to write that the architecture has been validated in PX4/Gazebo, that it has been proven cyber-resilient, or that the results establish airworthiness or certification readiness.')
 
 doc.add_heading('10. Required next validation stage',level=1)
-doc.add_paragraph('The next stage should migrate the same test logic into a genuine PX4/Gazebo software-in-the-loop environment. PX4 is an open-source autopilot supporting SITLH[™“ÔÈ‹ÑÈ[YÜ˜][Ûˆ[™›ÝšY\ÈÚ[][]Üˆ˜Z[\™KZ[š™XÝ[ÛˆYXÚ[š\Û\ÎÈÝÙ]™\‹]ÈÙ[™\šXÈ8 'Ü›Û™ÈÔø 'H˜Z[\™H[ÙH\È›ÝHÝXœÝ]]H›ÜˆHÛÛ›ÛYÜ˜YX[Ø\œžK[Ù™ˆÜÛÙš[™È[Ù[ˆH™^^\š[Y[ÚÝ[\™Y›Ü™H[š™XÝ™\›ÙXÚX›HÓ”ÔÈÜÚ][Û‹Ý™[ØÚ]HšX\È]HÚ[][]ÜˆÜˆÙ[œÛÜ‹[Y\ÜØYÙH›Ý[™\žK™]Z[ˆÚ[][]ÜˆÜ›Ý[™]Û›H›Üˆ]˜[X][Û‹[™™XÛÜ™\Ý[X]Üˆ[››Ý˜][ÛœË™ZXÛHÝ]KÛÛ[][šXØ][Ûˆ[Z[™Ë]XÝÜˆÝ]][™™\ÜÛœÙHÛÛ[X[™ËˆH^\š[Y[[˜\šXX›\È[™Y]šXÜÈ[™XYHYš[™Y[ˆÙXÝ[ÛˆÈØ[ˆ™H™]\ÙY‰ÊB‚™ØË˜YÚXY[™Ê	Ô™Y™\™[˜Ù\ÉË]™[LJBœ™YœÏVÂ‰ÐÚÚK‹Ø]KË‹XY™\‹K‹š[™Ë‹[™Kˆ
-ŒŒ
-KˆÛÙØ\™KX˜\ÙY™X[[YH™XÛÝ™\žHœ›ÛHÙ[œÛÜˆ]XÚÜÈÛˆ›Ø›ÝXÈ™ZXÛ\Ëˆ›ØÙYY[™ÜÈÙˆHŒÜ™[\›˜][Û˜[Þ[\ÜÚ][HÛˆ™\ÙX\˜Ú[ˆ]XÚÜË[\Ú[ÛœÈ[™Y™[œÙ\È
-RQŒŒ
-KÍKLÍ‰Ë‰ÒÙ\›œËKˆ‹‹Ú\\™ˆ‹š]K‹ˆK‹[™[\™^\ËˆKˆ
-ŒM
-Kˆ[›X[›™YZ\˜Ü˜YØ\\™H[™ÛÛ›ÛšXHÔÈÜÛÙš[™Ëˆ›Ý\›˜[ÙˆšY[›Ø›ÝXÜËÌJ
-KŒMËMŒÍ‹ˆÎ‹ËÙÚK›Ü™ËÌLŒL‹Ü›Ø‹ŒŒMLLË‰Ë‰ÓYZY\‹‹[™HÛÛšX]ÜœËˆ]]Ü[Ýˆ™[›ÙËˆÎ‹ËÙÚK›Ü™ËÌLLŽKÞ™[›ÙËNMMÌ‹‰Ë‰Ô\ØÚ[KˆË‹[™Û]\ËˆKˆ
-Œ
-KˆÝØ\™È˜][X[˜YÙ[Y[]]Û›Û^HHH]™[ÜY[[™]˜[X][ÛˆÙˆHÙ[‹TÝY™šXÚY[[›ÛX[H™\ÜÛœÙHÞ\Ý[H\˜Ú]XÝ\™H›ÜˆY\ÜXÙHXš]]ËˆLÜ™[\›˜][Û˜[ÛÛ™™\™[˜ÙHÛˆ[š\›Û›Y[[Þ\Ý[\ËPÑTËLŒMŒ‰Ë‰ÔÚXZÚKKˆ‹[™[\™^\ËˆKˆ
-ŒMŠKˆÓ”ÔÈÜÛÙš[™È[™]XÝ[Û‹ˆ›ØÙYY[™ÜÈÙˆHQQQKL
-ŠKLNLLÌˆÎ‹ËÙÚK›Ü™ËÌLŒLLKÒ”“ÐËŒŒM‹ŒLN‰Ë‰ÕX˜\ÜÚKKˆ
-ŒŒÊKˆ\YšXÚX[[[YÙ[˜ÙHš\ÚÈX[˜YÙ[Y[œ˜[Y]ÛÜšÈ
-RH“QˆKŒ
-Kˆ’TÕRHLLKˆÎ‹ËÙÚK›Ü™ËÌLŒŽÓ’TÕRKŒLLK‰Ë‰Õš[›Ú‹‹ˆË‹[™[K‹ˆ
-Œ
-KˆS”ÈZYYÜÛÙš[™È]XÝ[ÛˆÙˆYÚ[˜[ZXÈÓ”ÔÈ™XÙZ]™\ˆ›Üˆ][˜Ú™ZXÛH\XØ][ÛœÎˆHÛÜÙ[HÛÝ\Y\›ØXÚˆY˜[˜Ù\È[ˆÜXÙH™\ÙX\˜ÚÍ
-ŠKŽMLŽŽKˆÎ‹ËÙÚK›Ü™ËÌLŒLM‹Ú‹˜\Ü‹ŒŒŒËŒN‰Ë‰ÕÙZK‹Ý[‹Ë‹K‹[™XK‹ˆ
-Œ
-KˆÓ”ÔÈÜÛÙš[™È]XÝ[Ûˆ›ÜˆPUœÈ\Ú[™ÈÜ\ˆœ™\]Y[˜ÞH[™Ø\œšY\‹]ËS›Ú\ÙH[œÚ]H˜][Ëˆ›Ý\›˜[ÙˆÞ\Ý[\È\˜Ú]XÝ\™KMLËLÌŒL‹ˆÎ‹ËÙÚK›Ü™ËÌLŒLM‹Ú‹œÞ\Ø\˜ËŒŒŒLÌŒL‹‰Ë—B™›Üˆ™Yˆ[ˆ™YœÎ‚ˆYØË˜YÜ\˜YÜ˜\
-™YŠNÈœ\˜YÜ˜\Ù›Ü›X]™š\œÝÛ[™WÚ[™[R[˜Ú\ÊKŒŠNÈœ\˜YÜ˜\Ù›Ü›X]›YÚ[™[R[˜Ú\ÊŒŠNÈœ\˜YÜ˜\Ù›Ü›X]œÜXÙWØY\T
+doc.add_paragraph('The next stage should migrate the same test logic into a genuine PX4/Gazebo software-in-the-loop environment. PX4 is an open-source autopilot supporting SITL and ROS 2/DDS integration and provides simulator failure-injection mechanisms; however, its generic â€œwrong GPSâ€ failure mode is not a substitute for a controlled gradual carry-off spoofing model. The next experiment should therefore inject reproducible GNSS position/velocity bias at the simulator or sensor-message boundary, retain simulator ground truth only for evaluation, and record PX4 estimator innovations, vehicle state, communication timing, detector output, and response commands. The experimental variables and metrics already defined in Section 7 can be reused.')
 
-B‚™ØËœØ]™JÕU
-Bœš[
-ÕU
-B
+doc.add_heading('References',level=1)
+refs=[
+'Choi, H., Kate, S., Aafer, Y., Zhang, X., and Xu, D. (2020). Software-based Realtime Recovery from Sensor Attacks on Robotic Vehicles. Proceedings of the 23rd International Symposium on Research in Attacks, Intrusions and Defenses (RAID 2020), 349-364.',
+'Kerns, A. J., Shepard, D. P., Bhatti, J. A., and Humphreys, T. E. (2014). Unmanned Aircraft Capture and Control Via GPS Spoofing. Journal of Field Robotics, 31(4), 617-636. https://doi.org/10.1002/rob.21513.',
+'Meier, L., and The PX4 Contributors. PX4 Autopilot. Zenodo. https://doi.org/10.5281/zenodo.595432.',
+'Pischulti, P. K., and Klaus, D. M. (2024). Towards Fault Management Autonomy - The Development and Evaluation of a Self-Sufficient Anomaly Response System Architecture for Deep Space Habitats. 53rd International Conference on Environmental Systems, ICES-2024-420.',
+'Psiaki, M. L., and Humphreys, T. E. (2016). GNSS Spoofing and Detection. Proceedings of the IEEE, 104(6), 1258-1270. https://doi.org/10.1109/JPROC.2016.2526658.',
+'Tabassi, E. (2023). Artificial Intelligence Risk Management Framework (AI RMF 1.0). NIST AI 100-1. https://doi.org/10.6028/NIST.AI.100-1.',
+'Vinoj, V. S., and Lalu, V. (2024). INS aided spoofing detection of high dynamic GNSS receiver for launch vehicle applications: A loosely coupled approach. Advances in Space Research, 74(6), 2814-2829. https://doi.org/10.1016/j.asr.2024.03.018.',
+'Wei, X., Sun, C., Li, X., and Ma, J. (2024). GNSS spoofing detection for UAVs using Doppler frequency and Carrier-to-Noise Density Ratio. Journal of Systems Architecture, 153, 103212. https://doi.org/10.1016/j.sysarc.2024.103212.',
+]
+for ref in refs:
+    p=doc.add_paragraph(ref); p.paragraph_format.first_line_indent=Inches(-.2); p.paragraph_format.left_indent=Inches(.2); p.paragraph_format.space_after=Pt(4)
+
+doc.save(OUT)
+print(OUT)
