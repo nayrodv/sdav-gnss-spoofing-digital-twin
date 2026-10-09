@@ -1,0 +1,160 @@
+    def mark(msg):
+        nonlocal last
+        now=time.time(); print(f"[TIMING] {msg}: {now-last:.2f}s (total {now-T0:.2f}s)", flush=True); last=now
+    print("Generating calibration traces...", flush=True)
+    calib_nominal, meta_cal = gen_set("cov_calibration", {"nominal": 25}, 10000)
+    rt = calib_nominal[[f"rt_{i}" for i in range(6)]].to_numpy()
+    ri = calib_nominal[[f"ri_{i}" for i in range(6)]].to_numpy()
+    rg = calib_nominal[[f"rg_{i}" for i in range(6)]].to_numpy()
+    # discard first few seconds to remove initialization transients
+    mask = calib_nominal["time_s"].to_numpy() >= 5.0
+    C_twin = regularized_cov(rt[mask]); C_ind = regularized_cov(ri[mask]); C_dyn = regularized_cov(rg[mask])
+    inv_twin = np.linalg.inv(C_twin); inv_ind = np.linalg.inv(C_ind); inv_dyn = np.linalg.inv(C_dyn)
+    mark("calibration")
+
+    print("Generating threshold, train, validation, and test datasets...", flush=True)
+    import gc
+    thresh_raw, meta_thresh = gen_set("threshold", {"nominal":10,"gnss_degradation":10,"comm_delay":10}, 20000)
+    thresh = compact_feature_frame(add_features(thresh_raw, inv_twin, inv_ind, inv_dyn)); del thresh_raw; gc.collect()
+    train_raw, meta_train = gen_set("train", {s:20 for s in SCENARIOS}, 30000)
+    train = compact_feature_frame(add_features(train_raw, inv_twin, inv_ind, inv_dyn)); del train_raw; gc.collect()
+    val_raw, meta_val = gen_set("validation", {s:8 for s in SCENARIOS}, 40000)
+    val = compact_feature_frame(add_features(val_raw, inv_twin, inv_ind, inv_dyn)); del val_raw; gc.collect()
+    test_raw, meta_test = gen_set("test", {s:20 for s in SCENARIOS}, 50000)
+    test = compact_feature_frame(add_features(test_raw, inv_twin, inv_ind, inv_dyn)); del test_raw; gc.collect()
+    mark("dataset generation and feature computation")
+
+    feature_cols = ["log_d2_twin", "log_d2_ind", "log_d2_gpsdyn", "twin_age_s", "log_route_error_gps"]
+    X_train = train[feature_cols].to_numpy(); y_train = train["attack_active"].to_numpy()
+    X_val = val[feature_cols].to_numpy(); y_val = val["attack_active"].to_numpy()
+    X_test = test[feature_cols].to_numpy(); y_test = test["attack_active"].to_numpy()
+
+    clf = Pipeline([
+        ("scale", StandardScaler()),
+        ("lr", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=7)),
+    ])
+    clf.fit(X_train, y_train)
+    val["p_attack"] = clf.predict_proba(X_val)[:,1]
+    test["p_attack"] = clf.predict_proba(X_test)[:,1]
+    mark("model fit and probabilities")
+
+    # Thresholds calibrated on benign threshold set.
+    q_gpsdyn = float(thresh["d2_gpsdyn"].quantile(0.995))
+    q_twin = float(thresh["d2_twin"].quantile(0.995))
+    q_ind_high = float(thresh["d2_ind"].quantile(0.999))
+    stale_cutoff = max(0.30, float(thresh.loc[thresh.scenario == "nominal", "twin_age_s"].quantile(0.999) + 0.05))
+
+    p_gps, val_gps = tune_persistence(val, "d2_gpsdyn", q_gpsdyn, False, stale_cutoff, q_ind_high)
+    p_twin, val_twin = tune_persistence(val, "d2_twin", q_twin, False, stale_cutoff, q_ind_high)
+    prob_threshold, p_prop, val_prop = tune_classifier(val, "p_attack", stale_cutoff, q_ind_high)
+    mark("threshold/persistence tuning")
+
+    methods = {
+        "GNSS-only temporal": ("d2_gpsdyn", q_gpsdyn, p_gps, False),
+        "Twin residual": ("d2_twin", q_twin, p_twin, False),
+        "Multi-source + assurance": ("p_attack", prob_threshold, p_prop, True),
+    }
+    summaries = []
+    alert_outputs = []
+    for name,(score,thr,pers,assure) in methods.items():
+        a = trial_alerts(test, score, thr, pers, assure, stale_cutoff, q_ind_high)
+        a["method"] = name
+        alert_outputs.append(a)
+        m = event_metrics(a)
+        sm = sample_level_metrics(y_test, test[score].to_numpy(), thr) if score != "p_attack" else sample_level_metrics(y_test, test[score].to_numpy(), thr)
+        summaries.append({"method":name,"threshold":thr,"persistence_samples":pers,**m,**sm})
+    summary_df = pd.DataFrame(summaries)
+    alert_df = pd.concat(alert_outputs, ignore_index=True)
+    mark("held-out detection evaluation")
+
+    # Classifier calibration diagnostics on held-out test data.
+    p_test = test["p_attack"].to_numpy()
+    calibration = {
+        "brier_score": float(brier_score_loss(y_test, p_test)),
+        "ece_10_bins": ece_score(y_test, p_test, 10),
+        "roc_auc_probability": float(roc_auc_score(y_test, p_test)),
+    }
+
+    # Scenario-specific event results.
+    scenario_rows = []
+    for method in methods:
+        aa = alert_df[alert_df.method == method]
+        for scenario, g in aa.groupby("scenario"):
+            attack_trial = scenario in ATTACK
+            scenario_rows.append({
+                "method": method,
+                "scenario": scenario,
+                "n_trials": len(g),
+                "alert_rate": float(g.alert.mean()),
+                "median_latency_s": float(g.detection_latency_s.median()) if attack_trial else np.nan,
+                "p95_latency_s": float(g.detection_latency_s.quantile(0.95)) if attack_trial else np.nan,
+            })
+    scenario_df = pd.DataFrame(scenario_rows)
+
+    mark("scenario summaries")
+
+    # Persist detection-stage artifacts before the closed-loop response stage.
+    summary_df.to_csv(RESULTS / "detection_method_summary.csv", index=False)
+    scenario_df.to_csv(RESULTS / "detection_by_scenario.csv", index=False)
+    alert_df.to_csv(RESULTS / "trial_alerts.csv", index=False)
+    np.savez(RESULTS / "residual_covariances.npz", C_twin=C_twin, C_ind=C_ind, C_dyn=C_dyn)
+    model_info_early = {
+        "feature_columns": feature_cols,
+        "standard_scaler_mean": clf.named_steps["scale"].mean_.tolist(),
+        "standard_scaler_scale": clf.named_steps["scale"].scale_.tolist(),
+        "logistic_coefficients_standardized": clf.named_steps["lr"].coef_[0].tolist(),
+        "logistic_intercept": float(clf.named_steps["lr"].intercept_[0]),
+        "probability_threshold": float(prob_threshold),
+        "persistence_samples": int(p_prop),
+        "stale_twin_cutoff_s": float(stale_cutoff),
+        "high_independent_residual_threshold": float(q_ind_high),
+        "baseline_gnssdyn_threshold": float(q_gpsdyn),
+        "baseline_gnssdyn_persistence": int(p_gps),
+        "baseline_twin_threshold": float(q_twin),
+        "baseline_twin_persistence": int(p_twin),
+        "validation_event_metrics": {"gnss_only": val_gps, "twin_residual": val_twin, "proposed": val_prop},
+        "test_probability_calibration": calibration,
+    }
+    with open(RESULTS / "trained_detector_parameters.json", "w") as f:
+        json.dump(model_info_early, f, indent=2)
+
+    if os.environ.get("SKIP_RESPONSE", "0") == "1":
+        print("\nDETECTION SUMMARY")
+        print(summary_df.to_string(index=False))
+        print("\nSCENARIO SUMMARY")
+        print(scenario_df.to_string(index=False))
+        print("\nCALIBRATION", calibration)
+        return
+
+    print("Running closed-loop response-policy evaluation...", flush=True)
+    response_rows = []
+    for strategy_idx, strategy in enumerate(["detection_only", "fixed_rtb", "bounded_continue"]):
+        for s_idx, scenario in enumerate(SCENARIOS):
+            for j in range(8):
+                seed = 70000 + strategy_idx*1000000 + s_idx*10000 + j
+                response_rows.append(simulate_closed_loop(seed, scenario, clf, prob_threshold, p_prop,
+                                                         inv_twin, inv_ind, inv_dyn, stale_cutoff, q_ind_high,
+                                                         strategy))
+    response_df = pd.DataFrame(response_rows)
+
+    response_summary_rows = []
+    for strategy, g0 in response_df.groupby("strategy"):
+        for subset_name, g in [("all",g0), ("attack",g0[g0.attack_trial==1]), ("benign",g0[g0.attack_trial==0])]:
+            response_summary_rows.append({
+                "strategy":strategy,
+                "subset":subset_name,
+                "n_trials":len(g),
+                "alert_rate":float(g.alert.mean()),
+                "mission_completion_rate":float(g.mission_completed.mean()),
+                "return_home_rate":float(g.returned_home.mean()),
+                "median_max_route_error_m":float(g.max_route_error_post_attack_m.median()),
+                "p95_max_route_error_m":float(g.max_route_error_post_attack_m.quantile(0.95)),
+                "boundary10_violation_rate":float(g.boundary10_violation.mean()),
+                "boundary20_violation_rate":float(g.boundary20_violation.mean()),
+                "boundary30_violation_rate":float(g.boundary30_violation.mean()),
+                "median_route_recovery_time_s":float(g.route_recovery_time_s.median()) if g.route_recovery_time_s.notna().any() else np.nan,
+                "median_path_length_m":float(g.path_length_m.median()),
+            })
+    response_summary_df = pd.DataFrame(response_summary_rows)
+
+    # Representative traces for reproducible figures.
