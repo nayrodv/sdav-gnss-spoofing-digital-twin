@@ -1,0 +1,154 @@
+_t
+                r_dyn = np.concatenate([gnss_p - (prev_gnss_p + prev_gnss_v*dtt), gnss_v - prev_gnss_v])
+            d2t = float(mahalanobis_sq(r_twin[None,:], inv_twin)[0])
+            d2i = float(mahalanobis_sq(r_ind[None,:], inv_ind)[0])
+            d2g = float(mahalanobis_sq(r_dyn[None,:], inv_dyn)[0])
+            x = np.array([np.log1p(d2t), np.log1p(d2i), np.log1p(d2g), delay_s, np.log1p(route_distance(gnss_p, wp))])
+            z = (x - scaler_mean) / scaler_scale
+            logit = lr_intercept + float(np.dot(lr_coef, z))
+            prob = 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, logit))))
+            positive = prob >= prob_threshold
+            if positive and delay_s > stale_cutoff:
+                positive = d2i >= high_ind_threshold
+            consecutive = consecutive + 1 if positive else 0
+            if alert_time is None and consecutive >= persistence:
+                alert_time = t
+                if strategy == "fixed_rtb":
+                    gnss_isolated = True
+                    mode = "rtb"
+                    # nearest previously reached waypoint based on current mission target
+                    target_idx = max(0, target_idx - 1)
+                    current_target = wp[target_idx]
+                    response_time = t
+                elif strategy == "bounded_continue":
+                    gnss_isolated = True
+                    # continue mission using independent state estimate
+                    mode = "mission"
+                    response_time = t
+                elif strategy == "detection_only":
+                    response_time = np.nan
+            prev_gnss_p = gnss_p.copy(); prev_gnss_v = gnss_v.copy(); prev_gnss_t = t
+        else:
+            nav_p = nav_p + nav_v * cfg.dt
+
+    attack = scenario in ATTACK
+    return {
+        "seed": seed,
+        "scenario": scenario,
+        "strategy": strategy,
+        "attack_trial": int(attack),
+        "alert": int(alert_time is not None),
+        "alert_time_s": np.nan if alert_time is None else alert_time,
+        "detection_latency_s": np.nan if (alert_time is None or not attack) else alert_time - cfg.attack_start_s,
+        "mission_completed": int(mission_completed),
+        "returned_home": int(returned_home),
+        "max_route_error_m": max_route_error,
+        "max_route_error_post_attack_m": max_route_error_post_attack,
+        "route_recovery_time_s": np.nan if route_recovery_time is None else route_recovery_time,
+        "path_length_m": path_length,
+        "boundary10_violation": int(max_route_error_post_attack > 10.0),
+        "boundary20_violation": int(max_route_error_post_attack > 20.0),
+        "boundary30_violation": int(max_route_error_post_attack > 30.0),
+        **params,
+    }
+
+
+def main():
+    import time
+    T0=time.time(); last=T0
+    def mark(msg):
+        nonlocal last
+        now=time.time(); print(f"[TIMING] {msg}: {now-last:.2f}s (total {now-T0:.2f}s)", flush=True); last=now
+    print("Generating calibration traces...", flush=True)
+    calib_nominal, meta_cal = gen_set("cov_calibration", {"nominal": 25}, 10000)
+    rt = calib_nominal[[f"rt_{i}" for i in range(6)]].to_numpy()
+    ri = calib_nominal[[f"ri_{i}" for i in range(6)]].to_numpy()
+    rg = calib_nominal[[f"rg_{i}" for i in range(6)]].to_numpy()
+    # discard first few seconds to remove initialization transients
+    mask = calib_nominal["time_s"].to_numpy() >= 5.0
+    C_twin = regularized_cov(rt[mask]); C_ind = regularized_cov(ri[mask]); C_dyn = regularized_cov(rg[mask])
+    inv_twin = np.linalg.inv(C_twin); inv_ind = np.linalg.inv(C_ind); inv_dyn = np.linalg.inv(C_dyn)
+    mark("calibration")
+
+    print("Generating threshold, train, validation, and test datasets...", flush=True)
+    import gc
+    thresh_raw, meta_thresh = gen_set("threshold", {"nominal":10,"gnss_degradation":10,"comm_delay":10}, 20000)
+    thresh = compact_feature_frame(add_features(thresh_raw, inv_twin, inv_ind, inv_dyn)); del thresh_raw; gc.collect()
+    train_raw, meta_train = gen_set("train", {s:20 for s in SCENARIOS}, 30000)
+    train = compact_feature_frame(add_features(train_raw, inv_twin, inv_ind, inv_dyn)); del train_raw; gc.collect()
+    val_raw, meta_val = gen_set("validation", {s:8 for s in SCENARIOS}, 40000)
+    val = compact_feature_frame(add_features(val_raw, inv_twin, inv_ind, inv_dyn)); del val_raw; gc.collect()
+    test_raw, meta_test = gen_set("test", {s:20 for s in SCENARIOS}, 50000)
+    test = compact_feature_frame(add_features(test_raw, inv_twin, inv_ind, inv_dyn)); del test_raw; gc.collect()
+    mark("dataset generation and feature computation")
+
+    feature_cols = ["log_d2_twin", "log_d2_ind", "log_d2_gpsdyn", "twin_age_s", "log_route_error_gps"]
+    X_train = train[feature_cols].to_numpy(); y_train = train["attack_active"].to_numpy()
+    X_val = val[feature_cols].to_numpy(); y_val = val["attack_active"].to_numpy()
+    X_test = test[feature_cols].to_numpy(); y_test = test["attack_active"].to_numpy()
+
+    clf = Pipeline([
+        ("scale", StandardScaler()),
+        ("lr", LogisticRegression(max_iter=1000, class_weight="balanced", random_state=7)),
+    ])
+    clf.fit(X_train, y_train)
+    val["p_attack"] = clf.predict_proba(X_val)[:,1]
+    test["p_attack"] = clf.predict_proba(X_test)[:,1]
+    mark("model fit and probabilities")
+
+    # Thresholds calibrated on benign threshold set.
+    q_gpsdyn = float(thresh["d2_gpsdyn"].quantile(0.995))
+    q_twin = float(thresh["d2_twin"].quantile(0.995))
+    q_ind_high = float(thresh["d2_ind"].quantile(0.999))
+    stale_cutoff = max(0.30, float(thresh.loc[thresh.scenario == "nominal", "twin_age_s"].quantile(0.999) + 0.05))
+
+    p_gps, val_gps = tune_persistence(val, "d2_gpsdyn", q_gpsdyn, False, stale_cutoff, q_ind_high)
+    p_twin, val_twin = tune_persistence(val, "d2_twin", q_twin, False, stale_cutoff, q_ind_high)
+    prob_threshold, p_prop, val_prop = tune_classifier(val, "p_attack", stale_cutoff, q_ind_high)
+    mark("threshold/persistence tuning")
+
+    methods = {
+        "GNSS-only temporal": ("d2_gpsdyn", q_gpsdyn, p_gps, False),
+        "Twin residual": ("d2_twin", q_twin, p_twin, False),
+        "Multi-source + assurance": ("p_attack", prob_threshold, p_prop, True),
+    }
+    summaries = []
+    alert_outputs = []
+    for name,(score,thr,pers,assure) in methods.items():
+        a = trial_alerts(test, score, thr, pers, assure, stale_cutoff, q_ind_high)
+        a["method"] = name
+        alert_outputs.append(a)
+        m = event_metrics(a)
+        sm = sample_level_metrics(y_test, test[score].to_numpy(), thr) if score != "p_attack" else sample_level_metrics(y_test, test[score].to_numpy(), thr)
+        summaries.append({"method":name,"threshold":thr,"persistence_samples":pers,**m,**sm})
+    summary_df = pd.DataFrame(summaries)
+    alert_df = pd.concat(alert_outputs, ignore_index=True)
+    mark("held-out detection evaluation")
+
+    # Classifier calibration diagnostics on held-out test data.
+    p_test = test["p_attack"].to_numpy()
+    calibration = {
+        "brier_score": float(brier_score_loss(y_test, p_test)),
+        "ece_10_bins": ece_score(y_test, p_test, 10),
+        "roc_auc_probability": float(roc_auc_score(y_test, p_test)),
+    }
+
+    # Scenario-specific event results.
+    scenario_rows = []
+    for method in methods:
+        aa = alert_df[alert_df.method == method]
+        for scenario, g in aa.groupby("scenario"):
+            attack_trial = scenario in ATTACK
+            scenario_rows.append({
+                "method": method,
+                "scenario": scenario,
+                "n_trials": len(g),
+                "alert_rate": float(g.alert.mean()),
+                "median_latency_s": float(g.detection_latency_s.median()) if attack_trial else np.nan,
+                "p95_latency_s": float(g.detection_latency_s.quantile(0.95)) if attack_trial else np.nan,
+            })
+    scenario_df = pd.DataFrame(scenario_rows)
+
+    mark("scenario summaries")
+
+    # Persist detection-stage artifacts before the closed-loop response stage.
