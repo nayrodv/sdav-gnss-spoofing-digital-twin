@@ -1,0 +1,160 @@
+    scaler_mean = detector.named_steps["scale"].mean_
+    scaler_scale = detector.named_steps["scale"].scale_
+    lr_coef = detector.named_steps["lr"].coef_[0]
+    lr_intercept = float(detector.named_steps["lr"].intercept_[0])
+    wp = np.array(cfg.waypoints, dtype=float)
+    p, v = initial_state(cfg)
+    ind_pos_bias = np.zeros(3)
+    ind_vel_bias = np.zeros(3)
+    ind_p = p.copy(); ind_v = v.copy()
+    nav_p = p.copy(); nav_v = v.copy()
+    twin_p = p.copy(); twin_v = v.copy()
+    mission_targets = list(range(1, len(wp)))
+    target_idx = 1
+    current_target = wp[target_idx].copy()
+    mode = "mission"
+    gnss_isolated = False
+    alert_time = None
+    response_time = None
+    route_recovery_time = None
+    recovery_counter = 0
+    mission_completed = False
+    returned_home = False
+    max_route_error = 0.0
+    max_route_error_post_attack = 0.0
+    path_length = 0.0
+    prev_true_p = p.copy()
+
+    gnss_p = p.copy(); gnss_v = v.copy()
+    prev_gnss_p = None; prev_gnss_v = None; prev_gnss_t = None
+    hist_ind_p: List[np.ndarray] = []
+    hist_ind_v: List[np.ndarray] = []
+    hist_cmd: List[np.ndarray] = []
+    consecutive = 0
+
+    steps = int(round(cfg.duration_s / cfg.dt)) + 1
+    gnss_stride = max(1, int(round(cfg.gnss_period_s / cfg.dt)))
+
+    for k in range(steps):
+        t = k * cfg.dt
+        ind_pos_bias += rng.normal(0.0, cfg.ind_pos_bias_rw_sigma, 3)
+        ind_vel_bias += rng.normal(0.0, cfg.ind_vel_bias_rw_sigma, 3)
+        ind_p = p + ind_pos_bias + rng.normal(0.0, cfg.ind_pos_sigma_m, 3)
+        ind_v = v + ind_vel_bias + rng.normal(0.0, cfg.ind_vel_sigma_mps, 3)
+
+        # target management
+        if mode == "mission":
+            if target_idx < len(wp) - 1 and np.linalg.norm(nav_p - wp[target_idx]) <= cfg.waypoint_radius_m:
+                target_idx += 1
+            current_target = wp[target_idx]
+        elif mode == "rtb":
+            # retrace preceding mission waypoints to remain near the authorized corridor
+            if np.linalg.norm(nav_p - current_target) <= cfg.waypoint_radius_m:
+                if target_idx > 0:
+                    target_idx -= 1
+                    current_target = wp[target_idx]
+            if target_idx == 0 and np.linalg.norm(nav_p - wp[0]) <= cfg.completion_radius_m:
+                returned_home = True
+
+        a_cmd = controller(nav_p, nav_v, current_target, cfg)
+        a_true = a_cmd + rng.normal(0.0, cfg.process_accel_sigma, 3)
+        v = v + a_true * cfg.dt
+        p = p + v * cfg.dt
+        path_length += float(np.linalg.norm(p - prev_true_p)); prev_true_p = p.copy()
+
+        hist_ind_p.append(ind_p.copy()); hist_ind_v.append(ind_v.copy()); hist_cmd.append(a_cmd.copy())
+        delay_s = comm_delay(t, scenario, params, cfg)
+        delay_steps = int(round(delay_s / cfg.dt)); idx = max(0, k - delay_steps)
+        delayed_cmd = hist_cmd[idx]; delayed_ind_p = hist_ind_p[idx]; delayed_ind_v = hist_ind_v[idx]
+        twin_p = twin_p + twin_v * cfg.dt + 0.5 * delayed_cmd * cfg.dt**2
+        twin_v = twin_v + delayed_cmd * cfg.dt
+        twin_p += cfg.twin_pos_gain * (delayed_ind_p - twin_p)
+        twin_v += cfg.twin_vel_gain * (delayed_ind_v - twin_v)
+
+        rerr = route_distance(p, wp)
+        max_route_error = max(max_route_error, rerr)
+        if t >= cfg.attack_start_s:
+            max_route_error_post_attack = max(max_route_error_post_attack, rerr)
+        if alert_time is not None and mode == "mission":
+            if rerr <= cfg.recovery_route_threshold_m:
+                recovery_counter += 1
+                if route_recovery_time is None and recovery_counter * cfg.dt >= cfg.recovery_hold_s:
+                    route_recovery_time = t - alert_time
+            else:
+                recovery_counter = 0
+
+        if mode == "mission" and target_idx == len(wp)-1 and np.linalg.norm(p - wp[-1]) <= cfg.completion_radius_m:
+            mission_completed = True
+
+        if k % gnss_stride == 0:
+            gnss_p, gnss_v = generate_gnss(p, v, t, scenario, params, rng, cfg)
+            if gnss_isolated:
+                nav_p = ind_p.copy(); nav_v = ind_v.copy()
+            else:
+                w = cfg.gnss_nav_weight
+                nav_p = w * gnss_p + (1.0-w) * ind_p
+                nav_v = w * gnss_v + (1.0-w) * ind_v
+
+            r_twin = np.concatenate([gnss_p - twin_p, gnss_v - twin_v])
+            r_ind = np.concatenate([gnss_p - ind_p, gnss_v - ind_v])
+            if prev_gnss_p is None:
+                r_dyn = np.zeros(6)
+            else:
+                dtt = t - prev_gnss_t
+                r_dyn = np.concatenate([gnss_p - (prev_gnss_p + prev_gnss_v*dtt), gnss_v - prev_gnss_v])
+            d2t = float(mahalanobis_sq(r_twin[None,:], inv_twin)[0])
+            d2i = float(mahalanobis_sq(r_ind[None,:], inv_ind)[0])
+            d2g = float(mahalanobis_sq(r_dyn[None,:], inv_dyn)[0])
+            x = np.array([np.log1p(d2t), np.log1p(d2i), np.log1p(d2g), delay_s, np.log1p(route_distance(gnss_p, wp))])
+            z = (x - scaler_mean) / scaler_scale
+            logit = lr_intercept + float(np.dot(lr_coef, z))
+            prob = 1.0 / (1.0 + math.exp(-max(-60.0, min(60.0, logit))))
+            positive = prob >= prob_threshold
+            if positive and delay_s > stale_cutoff:
+                positive = d2i >= high_ind_threshold
+            consecutive = consecutive + 1 if positive else 0
+            if alert_time is None and consecutive >= persistence:
+                alert_time = t
+                if strategy == "fixed_rtb":
+                    gnss_isolated = True
+                    mode = "rtb"
+                    # nearest previously reached waypoint based on current mission target
+                    target_idx = max(0, target_idx - 1)
+                    current_target = wp[target_idx]
+                    response_time = t
+                elif strategy == "bounded_continue":
+                    gnss_isolated = True
+                    # continue mission using independent state estimate
+                    mode = "mission"
+                    response_time = t
+                elif strategy == "detection_only":
+                    response_time = np.nan
+            prev_gnss_p = gnss_p.copy(); prev_gnss_v = gnss_v.copy(); prev_gnss_t = t
+        else:
+            nav_p = nav_p + nav_v * cfg.dt
+
+    attack = scenario in ATTACK
+    return {
+        "seed": seed,
+        "scenario": scenario,
+        "strategy": strategy,
+        "attack_trial": int(attack),
+        "alert": int(alert_time is not None),
+        "alert_time_s": np.nan if alert_time is None else alert_time,
+        "detection_latency_s": np.nan if (alert_time is None or not attack) else alert_time - cfg.attack_start_s,
+        "mission_completed": int(mission_completed),
+        "returned_home": int(returned_home),
+        "max_route_error_m": max_route_error,
+        "max_route_error_post_attack_m": max_route_error_post_attack,
+        "route_recovery_time_s": np.nan if route_recovery_time is None else route_recovery_time,
+        "path_length_m": path_length,
+        "boundary10_violation": int(max_route_error_post_attack > 10.0),
+        "boundary20_violation": int(max_route_error_post_attack > 20.0),
+        "boundary30_violation": int(max_route_error_post_attack > 30.0),
+        **params,
+    }
+
+
+def main():
+    import time
+    T0=time.time(); last=T0
