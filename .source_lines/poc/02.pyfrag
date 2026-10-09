@@ -1,0 +1,160 @@
+
+    meta = dict(params)
+    meta.update({"seed": seed, "scenario": scenario})
+    return pd.DataFrame(rows), meta
+
+
+def regularized_cov(X: np.ndarray) -> np.ndarray:
+    C = np.cov(X, rowvar=False)
+    scale = max(float(np.trace(C) / C.shape[0]), 1e-9)
+    return C + np.eye(C.shape[0]) * scale * 1e-6
+
+
+def mahalanobis_sq(X: np.ndarray, C_inv: np.ndarray) -> np.ndarray:
+    return np.einsum("...i,ij,...j->...", X, C_inv, X)
+
+
+def add_features(df: pd.DataFrame, inv_twin: np.ndarray, inv_ind: np.ndarray, inv_dyn: np.ndarray) -> pd.DataFrame:
+    out = df.copy()
+    rt = out[[f"rt_{i}" for i in range(6)]].to_numpy()
+    ri = out[[f"ri_{i}" for i in range(6)]].to_numpy()
+    rg = out[[f"rg_{i}" for i in range(6)]].to_numpy()
+    out["d2_twin"] = mahalanobis_sq(rt, inv_twin)
+    out["d2_ind"] = mahalanobis_sq(ri, inv_ind)
+    out["d2_gpsdyn"] = mahalanobis_sq(rg, inv_dyn)
+    out["log_d2_twin"] = np.log1p(out["d2_twin"])
+    out["log_d2_ind"] = np.log1p(out["d2_ind"])
+    out["log_d2_gpsdyn"] = np.log1p(out["d2_gpsdyn"])
+    out["log_route_error_gps"] = np.log1p(out["route_error_gnss_m"])
+    return out
+
+
+def compact_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
+    keep = [
+        "seed","scenario","time_s","attack_active","twin_age_s","route_error_true_m","route_error_gnss_m",
+        "split","trial_id","d2_twin","d2_ind","d2_gpsdyn","log_d2_twin","log_d2_ind","log_d2_gpsdyn",
+        "log_route_error_gps"
+    ]
+    return df[keep].copy()
+
+def gen_set(name: str, counts: Dict[str, int], base_seed: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    dfs = []
+    metas = []
+    offset = 0
+    for s_idx, scenario in enumerate(SCENARIOS):
+        n = counts.get(scenario, 0)
+        for j in range(n):
+            seed = base_seed + s_idx * 100000 + j
+            df, meta = simulate_trace(seed, scenario)
+            df["split"] = name
+            df["trial_id"] = f"{name}_{scenario}_{j:03d}"
+            dfs.append(df)
+            meta["split"] = name
+            meta["trial_id"] = f"{name}_{scenario}_{j:03d}"
+            metas.append(meta)
+            offset += 1
+    return pd.concat(dfs, ignore_index=True), pd.DataFrame(metas)
+
+
+def trial_alerts(df: pd.DataFrame, score_col: str, threshold: float, persistence: int, assurance: bool = False,
+                 stale_cutoff: float = 0.30, high_ind_threshold: float = np.inf) -> pd.DataFrame:
+    rows = []
+    kernel = np.ones(persistence, dtype=int)
+    for trial_id, g in df.groupby("trial_id", sort=False):
+        g = g.sort_values("time_s")
+        scores = g[score_col].to_numpy()
+        positive = scores >= threshold
+        if assurance:
+            stale = g["twin_age_s"].to_numpy() > stale_cutoff
+            independent_support = g["d2_ind"].to_numpy() >= high_ind_threshold
+            positive = positive & (~stale | independent_support)
+        alert_time = None
+        if len(positive) >= persistence:
+            runs = np.convolve(positive.astype(int), kernel, mode="valid")
+            idxs = np.flatnonzero(runs >= persistence)
+            if len(idxs):
+                # convolution index is the start of the persistence window
+                alert_idx = int(idxs[0] + persistence - 1)
+                alert_time = float(g["time_s"].iloc[alert_idx])
+        scenario = g["scenario"].iloc[0]
+        attack = scenario in ATTACK
+        rows.append({
+            "trial_id": trial_id,
+            "scenario": scenario,
+            "attack_trial": int(attack),
+            "alert": int(alert_time is not None),
+            "alert_time_s": np.nan if alert_time is None else alert_time,
+            "detection_latency_s": np.nan if (alert_time is None or not attack) else max(0.0, alert_time - CFG.attack_start_s),
+        })
+    return pd.DataFrame(rows)
+
+def event_metrics(alert_df: pd.DataFrame) -> Dict[str, float]:
+    y = alert_df["attack_trial"].to_numpy()
+    pred = alert_df["alert"].to_numpy()
+    cm = confusion_matrix(y, pred, labels=[0,1])
+    tn, fp, fn, tp = cm.ravel()
+    lat = alert_df.loc[(alert_df.attack_trial == 1) & (alert_df.alert == 1), "detection_latency_s"]
+    return {
+        "trial_precision": float(tp / (tp + fp)) if tp + fp else np.nan,
+        "trial_recall": float(tp / (tp + fn)) if tp + fn else np.nan,
+        "trial_f1": float(2 * tp / (2 * tp + fp + fn)) if 2 * tp + fp + fn else np.nan,
+        "trial_false_alarm_rate": float(fp / (fp + tn)) if fp + tn else np.nan,
+        "trial_miss_rate": float(fn / (fn + tp)) if fn + tp else np.nan,
+        "median_detection_latency_s": float(lat.median()) if len(lat) else np.nan,
+        "p95_detection_latency_s": float(lat.quantile(0.95)) if len(lat) else np.nan,
+        "tp": int(tp), "fp": int(fp), "tn": int(tn), "fn": int(fn),
+    }
+
+
+def tune_persistence(df_val: pd.DataFrame, score_col: str, threshold: float, assurance: bool,
+                     stale_cutoff: float, high_ind_threshold: float) -> Tuple[int, Dict[str, float]]:
+    choices = []
+    for p in range(1, 7):
+        a = trial_alerts(df_val, score_col, threshold, p, assurance, stale_cutoff, high_ind_threshold)
+        m = event_metrics(a)
+        choices.append((p, m))
+    feasible = [(p,m) for p,m in choices if m["trial_false_alarm_rate"] <= 0.05]
+    if feasible:
+        return max(feasible, key=lambda x: (x[1]["trial_f1"], x[1]["trial_recall"], -x[0]))
+    return min(choices, key=lambda x: (x[1]["trial_false_alarm_rate"], -x[1]["trial_f1"]))
+
+
+def tune_classifier(df_val: pd.DataFrame, prob_col: str, stale_cutoff: float, high_ind_threshold: float) -> Tuple[float,int,Dict[str,float]]:
+    y = df_val["attack_active"].to_numpy().astype(int)
+    score = df_val[prob_col].to_numpy()
+    # Candidate thresholds from score quantiles; select the best sample-level F1
+    # subject to <=1% false-positive rate on benign samples when possible.
+    candidates = np.unique(np.quantile(score, np.linspace(0.50, 0.999, 120)))
+    options = []
+    for th in candidates:
+        pred = score >= th
+        neg = y == 0; pos = y == 1
+        fpr = float(np.mean(pred[neg])) if np.any(neg) else 0.0
+        tp = int(np.sum(pred & pos)); fp = int(np.sum(pred & neg)); fn = int(np.sum((~pred) & pos))
+        f1 = (2*tp/(2*tp+fp+fn)) if (2*tp+fp+fn) else 0.0
+        options.append((float(th), fpr, f1))
+    feasible = [o for o in options if o[1] <= 0.01]
+    th = max(feasible, key=lambda o:o[2])[0] if feasible else max(options, key=lambda o:o[2])[0]
+    p, m = tune_persistence(df_val, prob_col, th, True, stale_cutoff, high_ind_threshold)
+    return th, p, m
+
+def sample_level_metrics(y: np.ndarray, score: np.ndarray, threshold: float) -> Dict[str, float]:
+    pred = (score >= threshold).astype(int)
+    out = {
+        "sample_precision": precision_score(y, pred, zero_division=0),
+        "sample_recall": recall_score(y, pred, zero_division=0),
+        "sample_f1": f1_score(y, pred, zero_division=0),
+        "sample_accuracy": accuracy_score(y, pred),
+    }
+    if len(np.unique(y)) == 2:
+        out["roc_auc"] = roc_auc_score(y, score)
+    return {k: float(v) for k,v in out.items()}
+
+
+def simulate_closed_loop(seed: int, scenario: str, detector: Pipeline, prob_threshold: float, persistence: int,
+                         inv_twin: np.ndarray, inv_ind: np.ndarray, inv_dyn: np.ndarray,
+                         stale_cutoff: float, high_ind_threshold: float, strategy: str,
+                         cfg: SimConfig = CFG) -> Dict[str, float]:
+    """Closed-loop evaluation of response policies using the trained multi-source detector."""
+    rng = np.random.default_rng(seed)
+    params = sample_attack_parameters(scenario, rng)
