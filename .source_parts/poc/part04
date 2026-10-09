@@ -1,0 +1,141 @@
+    summary_df.to_csv(RESULTS / "detection_method_summary.csv", index=False)
+    scenario_df.to_csv(RESULTS / "detection_by_scenario.csv", index=False)
+    alert_df.to_csv(RESULTS / "trial_alerts.csv", index=False)
+    np.savez(RESULTS / "residual_covariances.npz", C_twin=C_twin, C_ind=C_ind, C_dyn=C_dyn)
+    model_info_early = {
+        "feature_columns": feature_cols,
+        "standard_scaler_mean": clf.named_steps["scale"].mean_.tolist(),
+        "standard_scaler_scale": clf.named_steps["scale"].scale_.tolist(),
+        "logistic_coefficients_standardized": clf.named_steps["lr"].coef_[0].tolist(),
+        "logistic_intercept": float(clf.named_steps["lr"].intercept_[0]),
+        "probability_threshold": float(prob_threshold),
+        "persistence_samples": int(p_prop),
+        "stale_twin_cutoff_s": float(stale_cutoff),
+        "high_independent_residual_threshold": float(q_ind_high),
+        "baseline_gnssdyn_threshold": float(q_gpsdyn),
+        "baseline_gnssdyn_persistence": int(p_gps),
+        "baseline_twin_threshold": float(q_twin),
+        "baseline_twin_persistence": int(p_twin),
+        "validation_event_metrics": {"gnss_only": val_gps, "twin_residual": val_twin, "proposed": val_prop},
+        "test_probability_calibration": calibration,
+    }
+    with open(RESULTS / "trained_detector_parameters.json", "w") as f:
+        json.dump(model_info_early, f, indent=2)
+
+    if os.environ.get("SKIP_RESPONSE", "0") == "1":
+        print("\nDETECTION SUMMARY")
+        print(summary_df.to_string(index=False))
+        print("\nSCENARIO SUMMARY")
+        print(scenario_df.to_string(index=False))
+        print("\nCALIBRATION", calibration)
+        return
+
+    print("Running closed-loop response-policy evaluation...", flush=True)
+    response_rows = []
+    for strategy_idx, strategy in enumerate(["detection_only", "fixed_rtb", "bounded_continue"]):
+        for s_idx, scenario in enumerate(SCENARIOS):
+            for j in range(8):
+                seed = 70000 + strategy_idx*1000000 + s_idx*10000 + j
+                response_rows.append(simulate_closed_loop(seed, scenario, clf, prob_threshold, p_prop,
+                                                         inv_twin, inv_ind, inv_dyn, stale_cutoff, q_ind_high,
+                                                         strategy))
+    response_df = pd.DataFrame(response_rows)
+
+    response_summary_rows = []
+    for strategy, g0 in response_df.groupby("strategy"):
+        for subset_name, g in [("all",g0), ("attack",g0[g0.attack_trial==1]), ("benign",g0[g0.attack_trial==0])]:
+            response_summary_rows.append({
+                "strategy":strategy,
+                "subset":subset_name,
+                "n_trials":len(g),
+                "alert_rate":float(g.alert.mean()),
+                "mission_completion_rate":float(g.mission_completed.mean()),
+                "return_home_rate":float(g.returned_home.mean()),
+                "median_max_route_error_m":float(g.max_route_error_post_attack_m.median()),
+                "p95_max_route_error_m":float(g.max_route_error_post_attack_m.quantile(0.95)),
+                "boundary10_violation_rate":float(g.boundary10_violation.mean()),
+                "boundary20_violation_rate":float(g.boundary20_violation.mean()),
+                "boundary30_violation_rate":float(g.boundary30_violation.mean()),
+                "median_route_recovery_time_s":float(g.route_recovery_time_s.median()) if g.route_recovery_time_s.notna().any() else np.nan,
+                "median_path_length_m":float(g.path_length_m.median()),
+            })
+    response_summary_df = pd.DataFrame(response_summary_rows)
+
+    # Representative traces for reproducible figures.
+    reps = []
+    for scenario, seed in [("nominal",90001),("gnss_degradation",90002),("comm_delay",90003),("abrupt_spoof",90004),("gradual_spoof",90005),("spoof_comm",90006)]:
+        d, m = simulate_trace(seed, scenario)
+        d = add_features(d, inv_twin, inv_ind, inv_dyn)
+        d["p_attack"] = clf.predict_proba(d[feature_cols].to_numpy())[:,1]
+        d["rep_scenario"] = scenario
+        reps.append(d)
+    rep_df = pd.concat(reps, ignore_index=True)
+
+    # Save artifacts.
+    summary_df.to_csv(RESULTS / "detection_method_summary.csv", index=False)
+    scenario_df.to_csv(RESULTS / "detection_by_scenario.csv", index=False)
+    alert_df.to_csv(RESULTS / "trial_alerts.csv", index=False)
+    response_df.to_csv(RESULTS / "response_trials.csv", index=False)
+    response_summary_df.to_csv(RESULTS / "response_summary.csv", index=False)
+    rep_df.to_csv(RESULTS / "representative_traces.csv", index=False)
+    pd.concat([meta_cal, meta_thresh, meta_train, meta_val, meta_test], ignore_index=True).to_csv(RESULTS / "scenario_parameters.csv", index=False)
+
+    np.savez(RESULTS / "residual_covariances.npz", C_twin=C_twin, C_ind=C_ind, C_dyn=C_dyn)
+    model_coef = clf.named_steps["lr"].coef_[0]
+    model_intercept = clf.named_steps["lr"].intercept_[0]
+    scaler_mean = clf.named_steps["scale"].mean_
+    scaler_scale = clf.named_steps["scale"].scale_
+    model_info = {
+        "feature_columns": feature_cols,
+        "standard_scaler_mean": scaler_mean.tolist(),
+        "standard_scaler_scale": scaler_scale.tolist(),
+        "logistic_coefficients_standardized": model_coef.tolist(),
+        "logistic_intercept": float(model_intercept),
+        "probability_threshold": float(prob_threshold),
+        "persistence_samples": int(p_prop),
+        "stale_twin_cutoff_s": float(stale_cutoff),
+        "high_independent_residual_threshold": float(q_ind_high),
+        "baseline_gnssdyn_threshold": float(q_gpsdyn),
+        "baseline_gnssdyn_persistence": int(p_gps),
+        "baseline_twin_threshold": float(q_twin),
+        "baseline_twin_persistence": int(p_twin),
+        "validation_event_metrics": {
+            "gnss_only": val_gps,
+            "twin_residual": val_twin,
+            "proposed": val_prop,
+        },
+        "test_probability_calibration": calibration,
+    }
+    with open(RESULTS / "trained_detector_parameters.json", "w") as f:
+        json.dump(model_info, f, indent=2)
+
+    env = {
+        "python": sys.version,
+        "platform": platform.platform(),
+        "numpy": np.__version__,
+        "pandas": pd.__version__,
+        "scipy": scipy.__version__,
+        "scikit_learn": sklearn.__version__,
+        "simulation_config": asdict(CFG),
+        "scenario_definitions": {
+            "abrupt_spoof": "horizontal position step sampled 12-25 m plus 0-0.8 m/s coherent velocity bias from t=30 s",
+            "gradual_spoof": "horizontal carry-off rate sampled 0.25-0.80 m/s, capped at 30 m, from t=30 s",
+            "spoof_comm": "gradual spoofing plus external twin telemetry delay sampled 0.55-1.20 s during t=30-50 s",
+            "gnss_degradation": "temporary 7 s increase in GNSS noise by 2.5-4.5x plus bounded transient bias surrogate",
+            "comm_delay": "external twin telemetry delay sampled 0.55-1.20 s during t=30-50 s; GNSS remains benign",
+        },
+        "important_limitation": "Reduced-order 3D translational simulation; not PX4/Gazebo, not RF GNSS simulation, not flight validation.",
+    }
+    with open(RESULTS / "execution_environment.json", "w") as f:
+        json.dump(env, f, indent=2)
+
+    print("\nDETECTION SUMMARY")
+    print(summary_df.to_string(index=False))
+    print("\nSCENARIO SUMMARY")
+    print(scenario_df.to_string(index=False))
+    print("\nCALIBRATION", calibration)
+    print("\nRESPONSE SUMMARY")
+    print(response_summary_df.to_string(index=False))
+
+if __name__ == "__main__":
+    main()
