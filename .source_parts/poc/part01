@@ -1,0 +1,187 @@
+    twin_v = v.copy()
+    target_idx = 1
+    gnss_p = p.copy()
+    gnss_v = v.copy()
+    prev_gnss_p = None
+    prev_gnss_v = None
+    prev_gnss_t = None
+
+    steps = int(round(cfg.duration_s / cfg.dt)) + 1
+    gnss_stride = max(1, int(round(cfg.gnss_period_s / cfg.dt)))
+    hist_ind_p: List[np.ndarray] = []
+    hist_ind_v: List[np.ndarray] = []
+    hist_cmd: List[np.ndarray] = []
+    rows: List[Dict[str, float]] = []
+
+    for k in range(steps):
+        t = k * cfg.dt
+        # Independent odometry surrogate with low random-walk bias.
+        ind_pos_bias += rng.normal(0.0, cfg.ind_pos_bias_rw_sigma, 3)
+        ind_vel_bias += rng.normal(0.0, cfg.ind_vel_bias_rw_sigma, 3)
+        ind_p = p + ind_pos_bias + rng.normal(0.0, cfg.ind_pos_sigma_m, 3)
+        ind_v = v + ind_vel_bias + rng.normal(0.0, cfg.ind_vel_sigma_mps, 3)
+
+        # Update mission target using current navigation estimate.
+        if target_idx < len(wp) - 1 and np.linalg.norm(nav_p - wp[target_idx]) <= cfg.waypoint_radius_m:
+            target_idx += 1
+        a_cmd = controller(nav_p, nav_v, wp[target_idx], cfg)
+
+        # Truth dynamics: reduced-order translational vehicle surrogate.
+        a_true = a_cmd + rng.normal(0.0, cfg.process_accel_sigma, 3)
+        v = v + a_true * cfg.dt
+        p = p + v * cfg.dt
+
+        hist_ind_p.append(ind_p.copy())
+        hist_ind_v.append(ind_v.copy())
+        hist_cmd.append(a_cmd.copy())
+
+        # Twin propagation + delayed correction from GNSS-independent telemetry.
+        delay_s = comm_delay(t, scenario, params, cfg)
+        delay_steps = int(round(delay_s / cfg.dt))
+        idx = max(0, k - delay_steps)
+        delayed_cmd = hist_cmd[idx]
+        delayed_ind_p = hist_ind_p[idx]
+        delayed_ind_v = hist_ind_v[idx]
+        twin_p = twin_p + twin_v * cfg.dt + 0.5 * delayed_cmd * cfg.dt**2
+        twin_v = twin_v + delayed_cmd * cfg.dt
+        twin_p += cfg.twin_pos_gain * (delayed_ind_p - twin_p)
+        twin_v += cfg.twin_vel_gain * (delayed_ind_v - twin_v)
+
+        if k % gnss_stride == 0:
+            gnss_p, gnss_v = generate_gnss(p, v, t, scenario, params, rng, cfg)
+            # Current navigation estimator surrogate: GNSS-dominant fusion.
+            w = cfg.gnss_nav_weight
+            nav_p = w * gnss_p + (1.0 - w) * ind_p
+            nav_v = w * gnss_v + (1.0 - w) * ind_v
+
+            r_twin = np.concatenate([gnss_p - twin_p, gnss_v - twin_v])
+            r_ind = np.concatenate([gnss_p - ind_p, gnss_v - ind_v])
+            if prev_gnss_p is None:
+                r_dyn = np.zeros(6)
+            else:
+                dtt = t - prev_gnss_t
+                pred_p = prev_gnss_p + prev_gnss_v * dtt
+                pred_v = prev_gnss_v
+                r_dyn = np.concatenate([gnss_p - pred_p, gnss_v - pred_v])
+            row = {
+                "seed": seed,
+                "scenario": scenario,
+                "time_s": t,
+                "attack_active": int(scenario in ATTACK and t >= cfg.attack_start_s),
+                "twin_age_s": delay_s,
+                "route_error_true_m": route_distance(p, wp),
+                "route_error_gnss_m": route_distance(gnss_p, wp),
+                "true_x": p[0], "true_y": p[1], "true_z": p[2],
+                "gps_x": gnss_p[0], "gps_y": gnss_p[1], "gps_z": gnss_p[2],
+                "ind_x": ind_p[0], "ind_y": ind_p[1], "ind_z": ind_p[2],
+                "twin_x": twin_p[0], "twin_y": twin_p[1], "twin_z": twin_p[2],
+            }
+            for i in range(6):
+                row[f"rt_{i}"] = r_twin[i]
+                row[f"ri_{i}"] = r_ind[i]
+                row[f"rg_{i}"] = r_dyn[i]
+            rows.append(row)
+            prev_gnss_p = gnss_p.copy()
+            prev_gnss_v = gnss_v.copy()
+            prev_gnss_t = t
+        else:
+            # Between GNSS samples, propagate nav estimate using latest velocity.
+            nav_p = nav_p + nav_v * cfg.dt
+
+    meta = dict(params)
+    meta.update({"seed": seed, "scenario": scenario})
+    return pd.DataFrame(rows), meta
+
+
+def regularized_cov(X: np.ndarray) -> np.ndarray:
+    C = np.cov(X, rowvar=False)
+    scale = max(float(np.trace(C) / C.shape[0]), 1e-9)
+    return C + np.eye(C.shape[0]) * scale * 1e-6
+
+
+def mahalanobis_sq(X: np.ndarray, C_inv: np.ndarray) -> np.ndarray:
+    return np.einsum("...i,ij,...j->...", X, C_inv, X)
+
+
+def add_features(df: pd.DataFrame, inv_twin: np.ndarray, inv_ind: np.ndarray, inv_dyn: np.ndarray) -> pd.DataFrame:
+    out = df.copy()
+    rt = out[[f"rt_{i}" for i in range(6)]].to_numpy()
+    ri = out[[f"ri_{i}" for i in range(6)]].to_numpy()
+    rg = out[[f"rg_{i}" for i in range(6)]].to_numpy()
+    out["d2_twin"] = mahalanobis_sq(rt, inv_twin)
+    out["d2_ind"] = mahalanobis_sq(ri, inv_ind)
+    out["d2_gpsdyn"] = mahalanobis_sq(rg, inv_dyn)
+    out["log_d2_twin"] = np.log1p(out["d2_twin"])
+    out["log_d2_ind"] = np.log1p(out["d2_ind"])
+    out["log_d2_gpsdyn"] = np.log1p(out["d2_gpsdyn"])
+    out["log_route_error_gps"] = np.log1p(out["route_error_gnss_m"])
+    return out
+
+
+def compact_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
+    keep = [
+        "seed","scenario","time_s","attack_active","twin_age_s","route_error_true_m","route_error_gnss_m",
+        "split","trial_id","d2_twin","d2_ind","d2_gpsdyn","log_d2_twin","log_d2_ind","log_d2_gpsdyn",
+        "log_route_error_gps"
+    ]
+    return df[keep].copy()
+
+def gen_set(name: str, counts: Dict[str, int], base_seed: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    dfs = []
+    metas = []
+    offset = 0
+    for s_idx, scenario in enumerate(SCENARIOS):
+        n = counts.get(scenario, 0)
+        for j in range(n):
+            seed = base_seed + s_idx * 100000 + j
+            df, meta = simulate_trace(seed, scenario)
+            df["split"] = name
+            df["trial_id"] = f"{name}_{scenario}_{j:03d}"
+            dfs.append(df)
+            meta["split"] = name
+            meta["trial_id"] = f"{name}_{scenario}_{j:03d}"
+            metas.append(meta)
+            offset += 1
+    return pd.concat(dfs, ignore_index=True), pd.DataFrame(metas)
+
+
+def trial_alerts(df: pd.DataFrame, score_col: str, threshold: float, persistence: int, assurance: bool = False,
+                 stale_cutoff: float = 0.30, high_ind_threshold: float = np.inf) -> pd.DataFrame:
+    rows = []
+    kernel = np.ones(persistence, dtype=int)
+    for trial_id, g in df.groupby("trial_id", sort=False):
+        g = g.sort_values("time_s")
+        scores = g[score_col].to_numpy()
+        positive = scores >= threshold
+        if assurance:
+            stale = g["twin_age_s"].to_numpy() > stale_cutoff
+            independent_support = g["d2_ind"].to_numpy() >= high_ind_threshold
+            positive = positive & (~stale | independent_support)
+        alert_time = None
+        if len(positive) >= persistence:
+            runs = np.convolve(positive.astype(int), kernel, mode="valid")
+            idxs = np.flatnonzero(runs >= persistence)
+            if len(idxs):
+                # convolution index is the start of the persistence window
+                alert_idx = int(idxs[0] + persistence - 1)
+                alert_time = float(g["time_s"].iloc[alert_idx])
+        scenario = g["scenario"].iloc[0]
+        attack = scenario in ATTACK
+        rows.append({
+            "trial_id": trial_id,
+            "scenario": scenario,
+            "attack_trial": int(attack),
+            "alert": int(alert_time is not None),
+            "alert_time_s": np.nan if alert_time is None else alert_time,
+            "detection_latency_s": np.nan if (alert_time is None or not attack) else max(0.0, alert_time - CFG.attack_start_s),
+        })
+    return pd.DataFrame(rows)
+
+def event_metrics(alert_df: pd.DataFrame) -> Dict[str, float]:
+    y = alert_df["attack_trial"].to_numpy()
+    pred = alert_df["alert"].to_numpy()
+    cm = confusion_matrix(y, pred, labels=[0,1])
+    tn, fp, fn, tp = cm.ravel()
+    lat = alert_df.loc[(alert_df.attack_trial == 1) & (alert_df.alert == 1), "detection_latency_s"]
+    return {
+        "trial_precision"
