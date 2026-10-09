@@ -22,6 +22,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Reconstruct executed source
+        run: |
+          cat .source_parts/poc/part00 \
+              .source_parts/poc/part01 \
+              .source_parts/poc/part02 \
+              .source_parts/poc/part03 \
+              .source_parts/poc/part04 > poc_experiment.py
+          python -m py_compile poc_experiment.py
+
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
@@ -36,17 +45,11 @@ jobs:
       - name: Run full reproducibility pipeline
         run: python run_all.py
 
-      - name: Build execution report
-        run: |
-          python create_report_docx.py
-          mkdir -p docs
-          mv -f SDAV_GNSS_Spoofing_Executed_PoC_Report.docx docs/
-
-      - name: Commit regenerated artifacts
+      - name: Commit regenerated source and artifacts
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add results figures docs/SDAV_GNSS_Spoofing_Executed_PoC_Report.docx
+          git add poc_experiment.py results figures
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
           else
