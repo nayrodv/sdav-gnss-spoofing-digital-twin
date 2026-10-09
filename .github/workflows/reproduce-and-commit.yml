@@ -30,7 +30,9 @@ jobs:
               .source_lines/poc/03.pyfrag \
               .source_lines/poc/04.pyfrag \
               .source_lines/poc/05.pyfrag > poc_experiment.py
-          python -m py_compile poc_experiment.py
+          cat .source_lines/report/00.pyfrag \
+              .source_lines/report/01.pyfrag > create_report_docx.py
+          python -m py_compile poc_experiment.py create_report_docx.py
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -46,14 +48,20 @@ jobs:
       - name: Run full reproducibility pipeline
         run: python run_all.py
 
+      - name: Build execution report
+        run: |
+          python create_report_docx.py
+          mkdir -p docs
+          mv -f SDAV_GNSS_Spoofing_Executed_PoC_Report.docx docs/
+
       - name: Commit regenerated source and artifacts
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add poc_experiment.py results figures
+          git add poc_experiment.py create_report_docx.py results figures docs/SDAV_GNSS_Spoofing_Executed_PoC_Report.docx
           if git diff --cached --quiet; then
             echo "No generated changes to commit."
           else
-            git commit -m "Regenerate reproducibility outputs"
+            git commit -m "Regenerate reproducibility outputs and report"
             git push
           fi
