@@ -1,0 +1,10 @@
+method,scenario,n_trials,detection_rate,median_latency_s,p95_latency_s
+GNSS-only temporal,abrupt_spoof,30,0.0,,
+GNSS-only temporal,gradual_spoof,30,0.0,,
+GNSS-only temporal,spoof_comm,30,0.0,,
+Twin residual,abrupt_spoof,30,0.0,,
+Twin residual,gradual_spoof,30,0.0,,
+Twin residual,spoof_comm,30,0.7333333333333333,8.800000000000004,9.390000000000006
+Multi-source + assurance,abrupt_spoof,30,1.0,0.6000000000000014,4.51
+Multi-source + assurance,gradual_spoof,30,1.0,29.3,45.20999999999998
+Multi-source + assurance,spoof_comm,30,1.0,32.2,48.58

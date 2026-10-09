@@ -1,0 +1,85 @@
+{
+  "feature_columns": [
+    "log_d2_twin",
+    "log_d2_ind",
+    "log_d2_gpsdyn",
+    "twin_age_s",
+    "log_route_error_gps"
+  ],
+  "standard_scaler_mean": [
+    3.029325714849756,
+    2.8804691570901477,
+    1.852361650640085,
+    0.06359883913916875,
+    1.0680299254136865
+  ],
+  "standard_scaler_scale": [
+    1.708594108396959,
+    1.6296588741870266,
+    0.5692552359765948,
+    0.23118120142191023,
+    0.4513881319384957
+  ],
+  "logistic_coefficients_standardized": [
+    1.8590802343176567,
+    5.482524871516185,
+    -1.1051524438232305,
+    0.363721846034471,
+    -0.9031770073986307
+  ],
+  "logistic_intercept": -0.22512424408561962,
+  "probability_threshold": 0.757149773965254,
+  "persistence_samples": 3,
+  "stale_twin_cutoff_s": 0.3,
+  "high_independent_residual_threshold": 163.6631984381269,
+  "baseline_gnssdyn_threshold": 110.87026934750764,
+  "baseline_gnssdyn_persistence": 5,
+  "baseline_twin_threshold": 186.90701177854876,
+  "baseline_twin_persistence": 5,
+  "validation_event_metrics": {
+    "gnss_only": {
+      "trial_precision": 0.0,
+      "trial_recall": 0.0,
+      "trial_f1": 0.0,
+      "trial_false_alarm_rate": 0.041666666666666664,
+      "trial_miss_rate": 1.0,
+      "median_detection_latency_s": NaN,
+      "p95_detection_latency_s": NaN,
+      "tp": 0,
+      "fp": 1,
+      "tn": 23,
+      "fn": 24
+    },
+    "twin_residual": {
+      "trial_precision": 0.8695652173913043,
+      "trial_recall": 0.8333333333333334,
+      "trial_f1": 0.851063829787234,
+      "trial_false_alarm_rate": 0.125,
+      "trial_miss_rate": 0.16666666666666666,
+      "median_detection_latency_s": 20.300000000000004,
+      "p95_detection_latency_s": 34.59000000000001,
+      "tp": 20,
+      "fp": 3,
+      "tn": 21,
+      "fn": 4
+    },
+    "proposed": {
+      "trial_precision": 1.0,
+      "trial_recall": 1.0,
+      "trial_f1": 1.0,
+      "trial_false_alarm_rate": 0.0,
+      "trial_miss_rate": 0.0,
+      "median_detection_latency_s": 8.700000000000003,
+      "p95_detection_latency_s": 20.6,
+      "tp": 24,
+      "fp": 0,
+      "tn": 24,
+      "fn": 0
+    }
+  },
+  "test_probability_calibration": {
+    "brier_score": 0.020332509490770968,
+    "ece_10_bins": 0.01897170043425089,
+    "roc_auc_probability": 0.9943625964232126
+  }
+}

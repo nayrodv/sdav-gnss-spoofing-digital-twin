@@ -1,0 +1,361 @@
+trial_id,scenario,attack_trial,alert,alert_time_s,detection_latency_s,method
+test_nominal_000,nominal,0,0,,,GNSS-only temporal
+test_nominal_001,nominal,0,0,,,GNSS-only temporal
+test_nominal_002,nominal,0,0,,,GNSS-only temporal
+test_nominal_003,nominal,0,0,,,GNSS-only temporal
+test_nominal_004,nominal,0,0,,,GNSS-only temporal
+test_nominal_005,nominal,0,0,,,GNSS-only temporal
+test_nominal_006,nominal,0,0,,,GNSS-only temporal
+test_nominal_007,nominal,0,0,,,GNSS-only temporal
+test_nominal_008,nominal,0,0,,,GNSS-only temporal
+test_nominal_009,nominal,0,0,,,GNSS-only temporal
+test_nominal_010,nominal,0,0,,,GNSS-only temporal
+test_nominal_011,nominal,0,0,,,GNSS-only temporal
+test_nominal_012,nominal,0,0,,,GNSS-only temporal
+test_nominal_013,nominal,0,0,,,GNSS-only temporal
+test_nominal_014,nominal,0,0,,,GNSS-only temporal
+test_nominal_015,nominal,0,0,,,GNSS-only temporal
+test_nominal_016,nominal,0,0,,,GNSS-only temporal
+test_nominal_017,nominal,0,0,,,GNSS-only temporal
+test_nominal_018,nominal,0,0,,,GNSS-only temporal
+test_nominal_019,nominal,0,0,,,GNSS-only temporal
+test_gnss_degradation_000,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_001,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_002,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_003,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_004,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_005,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_006,gnss_degradation,0,1,36.4,,GNSS-only temporal
+test_gnss_degradation_007,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_008,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_009,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_010,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_011,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_012,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_013,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_014,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_015,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_016,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_017,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_018,gnss_degradation,0,0,,,GNSS-only temporal
+test_gnss_degradation_019,gnss_degradation,0,0,,,GNSS-only temporal
+test_comm_delay_000,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_001,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_002,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_003,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_004,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_005,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_006,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_007,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_008,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_009,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_010,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_011,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_012,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_013,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_014,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_015,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_016,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_017,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_018,comm_delay,0,0,,,GNSS-only temporal
+test_comm_delay_019,comm_delay,0,0,,,GNSS-only temporal
+test_abrupt_spoof_000,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_001,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_002,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_003,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_004,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_005,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_006,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_007,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_008,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_009,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_010,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_011,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_012,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_013,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_014,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_015,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_016,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_017,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_018,abrupt_spoof,1,0,,,GNSS-only temporal
+test_abrupt_spoof_019,abrupt_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_000,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_001,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_002,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_003,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_004,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_005,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_006,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_007,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_008,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_009,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_010,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_011,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_012,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_013,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_014,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_015,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_016,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_017,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_018,gradual_spoof,1,0,,,GNSS-only temporal
+test_gradual_spoof_019,gradual_spoof,1,0,,,GNSS-only temporal
+test_spoof_comm_000,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_001,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_002,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_003,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_004,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_005,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_006,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_007,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_008,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_009,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_010,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_011,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_012,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_013,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_014,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_015,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_016,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_017,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_018,spoof_comm,1,0,,,GNSS-only temporal
+test_spoof_comm_019,spoof_comm,1,0,,,GNSS-only temporal
+test_nominal_000,nominal,0,0,,,Twin residual
+test_nominal_001,nominal,0,0,,,Twin residual
+test_nominal_002,nominal,0,0,,,Twin residual
+test_nominal_003,nominal,0,0,,,Twin residual
+test_nominal_004,nominal,0,0,,,Twin residual
+test_nominal_005,nominal,0,0,,,Twin residual
+test_nominal_006,nominal,0,0,,,Twin residual
+test_nominal_007,nominal,0,0,,,Twin residual
+test_nominal_008,nominal,0,0,,,Twin residual
+test_nominal_009,nominal,0,0,,,Twin residual
+test_nominal_010,nominal,0,0,,,Twin residual
+test_nominal_011,nominal,0,0,,,Twin residual
+test_nominal_012,nominal,0,0,,,Twin residual
+test_nominal_013,nominal,0,0,,,Twin residual
+test_nominal_014,nominal,0,0,,,Twin residual
+test_nominal_015,nominal,0,0,,,Twin residual
+test_nominal_016,nominal,0,0,,,Twin residual
+test_nominal_017,nominal,0,0,,,Twin residual
+test_nominal_018,nominal,0,0,,,Twin residual
+test_nominal_019,nominal,0,0,,,Twin residual
+test_gnss_degradation_000,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_001,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_002,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_003,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_004,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_005,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_006,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_007,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_008,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_009,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_010,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_011,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_012,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_013,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_014,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_015,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_016,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_017,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_018,gnss_degradation,0,0,,,Twin residual
+test_gnss_degradation_019,gnss_degradation,0,0,,,Twin residual
+test_comm_delay_000,comm_delay,0,0,,,Twin residual
+test_comm_delay_001,comm_delay,0,0,,,Twin residual
+test_comm_delay_002,comm_delay,0,0,,,Twin residual
+test_comm_delay_003,comm_delay,0,0,,,Twin residual
+test_comm_delay_004,comm_delay,0,0,,,Twin residual
+test_comm_delay_005,comm_delay,0,0,,,Twin residual
+test_comm_delay_006,comm_delay,0,0,,,Twin residual
+test_comm_delay_007,comm_delay,0,0,,,Twin residual
+test_comm_delay_008,comm_delay,0,0,,,Twin residual
+test_comm_delay_009,comm_delay,0,0,,,Twin residual
+test_comm_delay_010,comm_delay,0,1,39.0,,Twin residual
+test_comm_delay_011,comm_delay,0,0,,,Twin residual
+test_comm_delay_012,comm_delay,0,0,,,Twin residual
+test_comm_delay_013,comm_delay,0,0,,,Twin residual
+test_comm_delay_014,comm_delay,0,0,,,Twin residual
+test_comm_delay_015,comm_delay,0,0,,,Twin residual
+test_comm_delay_016,comm_delay,0,0,,,Twin residual
+test_comm_delay_017,comm_delay,0,0,,,Twin residual
+test_comm_delay_018,comm_delay,0,0,,,Twin residual
+test_comm_delay_019,comm_delay,0,0,,,Twin residual
+test_abrupt_spoof_000,abrupt_spoof,1,1,41.800000000000004,11.800000000000004,Twin residual
+test_abrupt_spoof_001,abrupt_spoof,1,1,54.0,24.0,Twin residual
+test_abrupt_spoof_002,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_003,abrupt_spoof,1,1,37.4,7.399999999999999,Twin residual
+test_abrupt_spoof_004,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_005,abrupt_spoof,1,0,,,Twin residual
+test_abrupt_spoof_006,abrupt_spoof,1,0,,,Twin residual
+test_abrupt_spoof_007,abrupt_spoof,1,1,31.6,1.6000000000000014,Twin residual
+test_abrupt_spoof_008,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_009,abrupt_spoof,1,0,,,Twin residual
+test_abrupt_spoof_010,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_011,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_012,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_013,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_014,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_015,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_016,abrupt_spoof,1,1,30.8,0.8000000000000007,Twin residual
+test_abrupt_spoof_017,abrupt_spoof,1,1,32.6,2.6000000000000014,Twin residual
+test_abrupt_spoof_018,abrupt_spoof,1,0,,,Twin residual
+test_abrupt_spoof_019,abrupt_spoof,1,1,31.400000000000002,1.4000000000000021,Twin residual
+test_gradual_spoof_000,gradual_spoof,1,1,54.400000000000006,24.400000000000006,Twin residual
+test_gradual_spoof_001,gradual_spoof,1,1,53.2,23.200000000000003,Twin residual
+test_gradual_spoof_002,gradual_spoof,1,1,55.6,25.6,Twin residual
+test_gradual_spoof_003,gradual_spoof,1,1,55.2,25.200000000000003,Twin residual
+test_gradual_spoof_004,gradual_spoof,1,1,80.80000000000001,50.80000000000001,Twin residual
+test_gradual_spoof_005,gradual_spoof,1,1,54.2,24.200000000000003,Twin residual
+test_gradual_spoof_006,gradual_spoof,1,1,60.800000000000004,30.800000000000004,Twin residual
+test_gradual_spoof_007,gradual_spoof,1,1,75.8,45.8,Twin residual
+test_gradual_spoof_008,gradual_spoof,1,1,59.800000000000004,29.800000000000004,Twin residual
+test_gradual_spoof_009,gradual_spoof,1,1,60.800000000000004,30.800000000000004,Twin residual
+test_gradual_spoof_010,gradual_spoof,1,1,61.2,31.200000000000003,Twin residual
+test_gradual_spoof_011,gradual_spoof,1,1,68.60000000000001,38.60000000000001,Twin residual
+test_gradual_spoof_012,gradual_spoof,1,1,53.6,23.6,Twin residual
+test_gradual_spoof_013,gradual_spoof,1,1,63.2,33.2,Twin residual
+test_gradual_spoof_014,gradual_spoof,1,1,61.2,31.200000000000003,Twin residual
+test_gradual_spoof_015,gradual_spoof,1,1,68.2,38.2,Twin residual
+test_gradual_spoof_016,gradual_spoof,1,1,58.400000000000006,28.400000000000006,Twin residual
+test_gradual_spoof_017,gradual_spoof,1,1,53.400000000000006,23.400000000000006,Twin residual
+test_gradual_spoof_018,gradual_spoof,1,1,57.400000000000006,27.400000000000006,Twin residual
+test_gradual_spoof_019,gradual_spoof,1,1,84.0,54.0,Twin residual
+test_spoof_comm_000,spoof_comm,1,1,58.800000000000004,28.800000000000004,Twin residual
+test_spoof_comm_001,spoof_comm,1,1,52.800000000000004,22.800000000000004,Twin residual
+test_spoof_comm_002,spoof_comm,1,1,74.2,44.2,Twin residual
+test_spoof_comm_003,spoof_comm,1,1,62.0,32.0,Twin residual
+test_spoof_comm_004,spoof_comm,1,1,80.80000000000001,50.80000000000001,Twin residual
+test_spoof_comm_005,spoof_comm,1,1,55.0,25.0,Twin residual
+test_spoof_comm_006,spoof_comm,1,1,38.400000000000006,8.400000000000006,Twin residual
+test_spoof_comm_007,spoof_comm,1,1,54.400000000000006,24.400000000000006,Twin residual
+test_spoof_comm_008,spoof_comm,1,1,52.400000000000006,22.400000000000006,Twin residual
+test_spoof_comm_009,spoof_comm,1,1,74.60000000000001,44.60000000000001,Twin residual
+test_spoof_comm_010,spoof_comm,1,1,75.8,45.8,Twin residual
+test_spoof_comm_011,spoof_comm,1,0,,,Twin residual
+test_spoof_comm_012,spoof_comm,1,0,,,Twin residual
+test_spoof_comm_013,spoof_comm,1,1,37.800000000000004,7.800000000000004,Twin residual
+test_spoof_comm_014,spoof_comm,1,1,38.6,8.600000000000001,Twin residual
+test_spoof_comm_015,spoof_comm,1,1,52.400000000000006,22.400000000000006,Twin residual
+test_spoof_comm_016,spoof_comm,1,1,62.2,32.2,Twin residual
+test_spoof_comm_017,spoof_comm,1,1,39.0,9.0,Twin residual
+test_spoof_comm_018,spoof_comm,1,1,38.400000000000006,8.400000000000006,Twin residual
+test_spoof_comm_019,spoof_comm,1,1,54.800000000000004,24.800000000000004,Twin residual
+test_nominal_000,nominal,0,0,,,Multi-source + assurance
+test_nominal_001,nominal,0,0,,,Multi-source + assurance
+test_nominal_002,nominal,0,0,,,Multi-source + assurance
+test_nominal_003,nominal,0,0,,,Multi-source + assurance
+test_nominal_004,nominal,0,0,,,Multi-source + assurance
+test_nominal_005,nominal,0,0,,,Multi-source + assurance
+test_nominal_006,nominal,0,0,,,Multi-source + assurance
+test_nominal_007,nominal,0,0,,,Multi-source + assurance
+test_nominal_008,nominal,0,0,,,Multi-source + assurance
+test_nominal_009,nominal,0,0,,,Multi-source + assurance
+test_nominal_010,nominal,0,0,,,Multi-source + assurance
+test_nominal_011,nominal,0,0,,,Multi-source + assurance
+test_nominal_012,nominal,0,0,,,Multi-source + assurance
+test_nominal_013,nominal,0,0,,,Multi-source + assurance
+test_nominal_014,nominal,0,0,,,Multi-source + assurance
+test_nominal_015,nominal,0,0,,,Multi-source + assurance
+test_nominal_016,nominal,0,0,,,Multi-source + assurance
+test_nominal_017,nominal,0,0,,,Multi-source + assurance
+test_nominal_018,nominal,0,0,,,Multi-source + assurance
+test_nominal_019,nominal,0,0,,,Multi-source + assurance
+test_gnss_degradation_000,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_001,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_002,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_003,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_004,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_005,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_006,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_007,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_008,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_009,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_010,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_011,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_012,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_013,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_014,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_015,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_016,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_017,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_018,gnss_degradation,0,0,,,Multi-source + assurance
+test_gnss_degradation_019,gnss_degradation,0,0,,,Multi-source + assurance
+test_comm_delay_000,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_001,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_002,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_003,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_004,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_005,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_006,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_007,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_008,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_009,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_010,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_011,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_012,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_013,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_014,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_015,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_016,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_017,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_018,comm_delay,0,0,,,Multi-source + assurance
+test_comm_delay_019,comm_delay,0,0,,,Multi-source + assurance
+test_abrupt_spoof_000,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_001,abrupt_spoof,1,1,30.6,0.6000000000000014,Multi-source + assurance
+test_abrupt_spoof_002,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_003,abrupt_spoof,1,1,30.6,0.6000000000000014,Multi-source + assurance
+test_abrupt_spoof_004,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_005,abrupt_spoof,1,1,30.6,0.6000000000000014,Multi-source + assurance
+test_abrupt_spoof_006,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_007,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_008,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_009,abrupt_spoof,1,1,30.6,0.6000000000000014,Multi-source + assurance
+test_abrupt_spoof_010,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_011,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_012,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_013,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_014,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_015,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_016,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_017,abrupt_spoof,1,1,30.400000000000002,0.40000000000000213,Multi-source + assurance
+test_abrupt_spoof_018,abrupt_spoof,1,1,30.6,0.6000000000000014,Multi-source + assurance
+test_abrupt_spoof_019,abrupt_spoof,1,1,30.6,0.6000000000000014,Multi-source + assurance
+test_gradual_spoof_000,gradual_spoof,1,1,32.6,2.6000000000000014,Multi-source + assurance
+test_gradual_spoof_001,gradual_spoof,1,1,31.6,1.6000000000000014,Multi-source + assurance
+test_gradual_spoof_002,gradual_spoof,1,1,37.800000000000004,7.800000000000004,Multi-source + assurance
+test_gradual_spoof_003,gradual_spoof,1,1,32.2,2.200000000000003,Multi-source + assurance
+test_gradual_spoof_004,gradual_spoof,1,1,42.6,12.600000000000001,Multi-source + assurance
+test_gradual_spoof_005,gradual_spoof,1,1,30.8,0.8000000000000007,Multi-source + assurance
+test_gradual_spoof_006,gradual_spoof,1,1,35.2,5.200000000000003,Multi-source + assurance
+test_gradual_spoof_007,gradual_spoof,1,1,43.6,13.600000000000001,Multi-source + assurance
+test_gradual_spoof_008,gradual_spoof,1,1,31.0,1.0,Multi-source + assurance
+test_gradual_spoof_009,gradual_spoof,1,1,36.6,6.600000000000001,Multi-source + assurance
+test_gradual_spoof_010,gradual_spoof,1,1,39.0,9.0,Multi-source + assurance
+test_gradual_spoof_011,gradual_spoof,1,1,40.400000000000006,10.400000000000006,Multi-source + assurance
+test_gradual_spoof_012,gradual_spoof,1,1,31.400000000000002,1.4000000000000021,Multi-source + assurance
+test_gradual_spoof_013,gradual_spoof,1,1,32.4,2.3999999999999986,Multi-source + assurance
+test_gradual_spoof_014,gradual_spoof,1,1,38.800000000000004,8.800000000000004,Multi-source + assurance
+test_gradual_spoof_015,gradual_spoof,1,1,41.800000000000004,11.800000000000004,Multi-source + assurance
+test_gradual_spoof_016,gradual_spoof,1,1,30.8,0.8000000000000007,Multi-source + assurance
+test_gradual_spoof_017,gradual_spoof,1,1,31.0,1.0,Multi-source + assurance
+test_gradual_spoof_018,gradual_spoof,1,1,33.800000000000004,3.8000000000000043,Multi-source + assurance
+test_gradual_spoof_019,gradual_spoof,1,1,41.400000000000006,11.400000000000006,Multi-source + assurance
+test_spoof_comm_000,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_001,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_002,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_003,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_004,spoof_comm,1,1,51.0,21.0,Multi-source + assurance
+test_spoof_comm_005,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_006,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_007,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_008,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_009,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_010,spoof_comm,1,1,51.2,21.200000000000003,Multi-source + assurance
+test_spoof_comm_011,spoof_comm,1,1,51.0,21.0,Multi-source + assurance
+test_spoof_comm_012,spoof_comm,1,1,52.0,22.0,Multi-source + assurance
+test_spoof_comm_013,spoof_comm,1,1,50.400000000000006,20.400000000000006,Multi-source + assurance
+test_spoof_comm_014,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_015,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_016,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_017,spoof_comm,1,1,50.6,20.6,Multi-source + assurance
+test_spoof_comm_018,spoof_comm,1,1,51.0,21.0,Multi-source + assurance
+test_spoof_comm_019,spoof_comm,1,1,50.6,20.6,Multi-source + assurance

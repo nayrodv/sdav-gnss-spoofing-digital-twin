@@ -1,0 +1,4 @@
+metric,strategy_a,strategy_b,n_pairs,median_a,median_b,median_paired_difference_a_minus_b,wilcoxon_statistic,p_value
+max_route_error_post_attack_m,detection_only,bounded_continue,60,17.394433539547297,2.62639143035021,13.934134618912255,0.0,1.6295557943119345e-11
+max_route_error_post_attack_m,fixed_rtb,bounded_continue,60,2.8895910260638886,2.62639143035021,0.19847032694070021,283.0,0.0001287587683560603
+max_route_error_post_attack_m,detection_only,fixed_rtb,60,17.394433539547297,2.8895910260638886,12.881513401637303,0.0,1.6295557943119345e-11

@@ -1,0 +1,19 @@
+method,scenario,n_trials,alert_rate,median_latency_s,p95_latency_s
+GNSS-only temporal,abrupt_spoof,20,0.0,,
+GNSS-only temporal,comm_delay,20,0.0,,
+GNSS-only temporal,gnss_degradation,20,0.05,,
+GNSS-only temporal,gradual_spoof,20,0.0,,
+GNSS-only temporal,nominal,20,0.0,,
+GNSS-only temporal,spoof_comm,20,0.0,,
+Twin residual,abrupt_spoof,20,0.8,0.8000000000000007,14.850000000000003
+Twin residual,comm_delay,20,0.05,,
+Twin residual,gnss_degradation,20,0.0,,
+Twin residual,gradual_spoof,20,1.0,30.300000000000004,50.960000000000015
+Twin residual,nominal,20,0.0,,
+Twin residual,spoof_comm,20,0.9,24.600000000000005,46.54999999999999
+Multi-source + assurance,abrupt_spoof,20,1.0,0.40000000000000213,0.6000000000000014
+Multi-source + assurance,comm_delay,20,0.0,,
+Multi-source + assurance,gnss_degradation,20,0.0,,
+Multi-source + assurance,gradual_spoof,20,1.0,4.5000000000000036,12.650000000000002
+Multi-source + assurance,nominal,20,0.0,,
+Multi-source + assurance,spoof_comm,20,1.0,20.6,21.240000000000002
